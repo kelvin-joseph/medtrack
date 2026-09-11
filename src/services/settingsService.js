@@ -3,8 +3,13 @@ import { readValue } from "./storage.js";
 import { DEFAULT_SETTINGS } from "../data/demoData.js";
 
 const TABLE = "settings";
-const ROW_ID = "default";
 const LOCALSTORAGE_MIGRATION_FLAG = "medtrack_settings_migrated_to_supabase";
+
+// Settings is now one row per hospital (hospital_id, not the old fixed
+// id='default' row). We never filter by id/hospital_id from the client —
+// RLS already restricts every query on this table to the current user's
+// own hospital_id, so a plain select/update always resolves to exactly
+// one row: theirs.
 
 // Defensive merge so a stored row that predates a newly-added settings
 // section (e.g. you add a new tab later) doesn't come back missing keys
@@ -49,15 +54,13 @@ async function migrateFromLocalStorageIfNeeded() {
     const { data: row, error: fetchErr } = await supabase
       .from(TABLE)
       .select("data")
-      .eq("id", ROW_ID)
       .maybeSingle();
     if (fetchErr) throw fetchErr;
 
     if (!row || isEqualToDefaults(row.data)) {
       const { error: updateErr } = await supabase
         .from(TABLE)
-        .update({ data: local })
-        .eq("id", ROW_ID);
+        .update({ data: local });
       if (updateErr) throw updateErr;
       console.info(
         "[settingsService] Migrated customized settings from localStorage to Supabase.",
@@ -85,10 +88,9 @@ export async function get() {
   const { data, error } = await supabase
     .from(TABLE)
     .select("data")
-    .eq("id", ROW_ID)
     .maybeSingle();
   if (error) throw error;
-  if (!data) return DEFAULT_SETTINGS; // shouldn't happen once 005_settings_table.sql has run
+  if (!data) return DEFAULT_SETTINGS; // shouldn't happen once every hospital has a settings row
   return mergeWithDefaults(data.data);
 }
 
@@ -97,8 +99,7 @@ export async function save(settings) {
   const { data: userData } = await supabase.auth.getUser();
   const { error } = await supabase
     .from(TABLE)
-    .update({ data: settings, updated_by: userData.user?.id })
-    .eq("id", ROW_ID);
+    .update({ data: settings, updated_by: userData.user?.id });
   if (error) throw error;
   return settings;
 }
