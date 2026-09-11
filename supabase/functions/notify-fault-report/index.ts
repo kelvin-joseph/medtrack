@@ -57,12 +57,14 @@ Deno.serve(async (req) => {
     .from("fault_tickets").select("*").eq("id", body.ticketId).maybeSingle();
   if (tkErr || !ticketRow) return json({ error: "Ticket not found." }, 404);
   const ticket = fromTicketRow(ticketRow);
+  const hospitalId = ticketRow.hospital_id;
 
   const { data: equipRow } = await admin
-    .from("equipment").select("*").eq("id", ticket.equipmentId).maybeSingle();
+    .from("equipment").select("*").eq("id", ticket.equipmentId).eq("hospital_id", hospitalId).maybeSingle();
   const equipment = fromEquipmentRow(equipRow);
 
-  const { data: profiles } = await admin.from("profiles").select("*").eq("active", true);
+  const { data: profiles } = await admin
+    .from("profiles").select("*").eq("active", true).eq("hospital_id", hospitalId);
   const isHighCriticality = equipment?.clinicalCriticality === "Critical" || equipment?.clinicalCriticality === "High";
 
   const recipients = (profiles || []).filter((p: any) =>
@@ -92,6 +94,7 @@ Deno.serve(async (req) => {
         recipient_id: profile.id,
         channel: "email",
         digest_date: today,
+        hospital_id: hospitalId,
       });
       // A duplicate-key conflict here (unique constraint) is expected and
       // harmless if this ever fires twice for the same ticket — swallow it
