@@ -84,6 +84,15 @@ export function RoleProvider({ children }) {
    * only thing allowed to actually create one. This also means the flow
    * works the same whether or not email confirmation is required: the
    * metadata survives until their first real session, whenever that is.
+   *
+   * Supabase deliberately returns a success-shaped response (error: null,
+   * no session) when signUp() is called with an email that's already
+   * registered — this prevents attackers from using signup to discover
+   * which emails exist. No new account is created and no email is sent in
+   * that case. The one reliable signal for it: data.user.identities comes
+   * back as an empty array, even though error is null. We check for that
+   * here so the person gets an honest message instead of a "check your
+   * email" screen that's actually inert.
    */
   const signUp = useCallback(async (email, password, hospitalName) => {
     setAuthError(null);
@@ -95,6 +104,11 @@ export function RoleProvider({ children }) {
     if (error) {
       setAuthError(error.message);
       return { error };
+    }
+    if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+      const message = "An account with this email already exists. Please sign in or use a different email to create a new hospital.";
+      setAuthError(message);
+      return { error: { message } };
     }
     return { error: null, needsEmailConfirmation: !data.session };
   }, []);
