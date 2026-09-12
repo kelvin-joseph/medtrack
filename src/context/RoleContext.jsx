@@ -76,11 +76,68 @@ export function RoleProvider({ children }) {
     return { error: null };
   }, []);
 
+  /**
+   * Self-serve "create your hospital" signup. hospitalName is carried as
+   * auth user_metadata (pending_hospital_name) rather than written anywhere
+   * yet — the account isn't attached to a real hospital until the
+   * provisioning effect below calls the create_hospital() RPC, which is the
+   * only thing allowed to actually create one. This also means the flow
+   * works the same whether or not email confirmation is required: the
+   * metadata survives until their first real session, whenever that is.
+   */
+  const signUp = useCallback(async (email, password, hospitalName) => {
+    setAuthError(null);
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { data: { pending_hospital_name: hospitalName } },
+    });
+    if (error) {
+      setAuthError(error.message);
+      return { error };
+    }
+    return { error: null, needsEmailConfirmation: !data.session };
+  }, []);
+
   const signOut = useCallback(async () => {
     await supabase.auth.signOut();
     setProfile(null);
     setSession(null);
   }, []);
+
+  // Brand-new self-serve accounts land in a placeholder hospital (see
+  // migration) with no real data. As soon as we have both a session and a
+  // loaded profile, if there's a pending_hospital_name waiting, provision
+  // their real hospital via the create_hospital() RPC — the only path
+  // that's allowed to create one — then reload the profile so the rest of
+  // the app sees their real hospital_id/role.
+  const provisioningRef = useRef(false);
+  const [provisioning, setProvisioning] = useState(false);
+
+  useEffect(() => {
+    if (!session || !profile) return;
+    const pendingName = session.user?.user_metadata?.pending_hospital_name;
+    if (!pendingName || provisioningRef.current) return;
+    provisioningRef.current = true;
+    setProvisioning(true);
+
+    (async () => {
+      try {
+        const { error: rpcError } = await supabase.rpc("create_hospital", { hospital_name: pendingName });
+        if (rpcError) {
+          setAuthError(rpcError.message);
+        } else {
+          await loadProfile(session.user.id);
+        }
+      } finally {
+        // Clear the pending flag regardless of outcome — an MVP tradeoff:
+        // a failure here (e.g. bad name) surfaces via authError rather than
+        // retrying indefinitely.
+        await supabase.auth.updateUser({ data: { pending_hospital_name: null } });
+        if (mounted.current) setProvisioning(false);
+      }
+    })();
+  }, [session, profile, loadProfile]);
 
   /** Called from SetPasswordScreen after an invite/recovery link. */
   const completePasswordSetup = useCallback(async (password) => {
@@ -102,7 +159,7 @@ export function RoleProvider({ children }) {
         session, profile, user: profile, role,
         authLoading, authError, setAuthError,
         needsPasswordSetup, completePasswordSetup,
-        signIn, signOut,
+        signIn, signUp, signOut, provisioning,
         can, canSeeNav,
       }}
     >
