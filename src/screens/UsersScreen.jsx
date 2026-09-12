@@ -1,8 +1,25 @@
 import { useState } from "react";
 import { Users, Plus, Search, MoreVertical, X } from "lucide-react";
 import { useData } from "../context/AppDataContext.jsx";
+import { useRole } from "../context/RoleContext.jsx";
 import { ROLES, PERMISSIONS } from "../data/roles.js";
 import { fmtDate } from "../lib/dates.js";
+
+// Mirrors admin-create-user's ADMIN_ROLES — who's allowed to invite
+// colleagues. The Edge Function is the real enforcement boundary (it
+// checks this server-side and rejects anyone else with a 403); this local
+// copy only decides whether to show the "Add user" button, so an
+// unauthorized person never sees an action that's guaranteed to fail.
+const CAN_INVITE_ROLES = ["System Administrator", "Head of Biomedical Engineering"];
+
+// Mirrors admin-create-user's VALID_ROLES for the invite form specifically.
+// ROLES (from data/roles.js) also includes "Demo Viewer" for the
+// permissions matrix below, but that's a seeded demo account, not an
+// invitable colleague — the backend rejects it with a 400 if selected, so
+// it's left out of this dropdown rather than reproduced as a runtime error.
+const INVITABLE_ROLES = ROLES.filter((r) => r !== "Demo Viewer");
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const ROLE_COLORS = {
   "Biomedical Engineer": "#2F7DE1",
@@ -36,15 +53,18 @@ function initials(name) {
 }
 
 export default function UsersScreen() {
+  const { profile } = useRole();
   const { users, usersLoading, usersError, refreshUsers, addUser, toggleUserActive } = useData();
   const [query, setQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState("All");
   const [showAdd, setShowAdd] = useState(false);
   const [openMenuId, setOpenMenuId] = useState(null);
-  const [form, setForm] = useState({ name: "", email: "", role: ROLES[0], department: "" });
+  const [form, setForm] = useState({ name: "", email: "", role: INVITABLE_ROLES[0], department: "" });
   const [formError, setFormError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [togglingId, setTogglingId] = useState(null);
+
+  const canInvite = CAN_INVITE_ROLES.includes(profile?.role);
 
   const roleCounts = ROLES.map((r) => ({ role: r, count: users.filter((u) => u.role === r).length }));
 
@@ -55,17 +75,25 @@ export default function UsersScreen() {
   });
 
   async function submit() {
-    if (!form.name || !form.email) return;
+    if (submitting) return; // belt-and-suspenders against double-submit (e.g. double-click)
+    if (!form.name.trim() || !form.email.trim()) {
+      setFormError("Name and email are required.");
+      return;
+    }
+    if (!EMAIL_RE.test(form.email.trim())) {
+      setFormError("Enter a valid email address.");
+      return;
+    }
     setSubmitting(true);
     setFormError(null);
-    const { error } = await addUser({ ...form });
+    const { error } = await addUser({ ...form, name: form.name.trim(), email: form.email.trim() });
     setSubmitting(false);
     if (error) {
       setFormError(error);
       return;
     }
     setShowAdd(false);
-    setForm({ name: "", email: "", role: ROLES[0], department: "" });
+    setForm({ name: "", email: "", role: INVITABLE_ROLES[0], department: "" });
   }
 
   async function handleToggle(id) {
@@ -84,9 +112,11 @@ export default function UsersScreen() {
           </h1>
           <p className="text-sm text-muted mt-1">{usersLoading ? "Loading users…" : `${users.length} users`} · System Administrator only</p>
         </div>
-        <button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 rounded-lg bg-accent text-white text-xs font-semibold px-3 py-2 hover:opacity-90 transition-opacity">
-          <Plus size={14} /> Add user
-        </button>
+        {canInvite && (
+          <button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 rounded-lg bg-accent text-white text-xs font-semibold px-3 py-2 hover:opacity-90 transition-opacity">
+            <Plus size={14} /> Add user
+          </button>
+        )}
       </div>
 
       {usersError && (
@@ -246,7 +276,7 @@ export default function UsersScreen() {
       </div>
 
       {/* Add user modal */}
-      {showAdd && (
+      {showAdd && canInvite && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-[#0F3058]/40" onClick={() => !submitting && setShowAdd(false)} />
           <div className="relative w-full max-w-sm rounded-2xl border border-border bg-surface shadow-tag p-5">
@@ -255,7 +285,7 @@ export default function UsersScreen() {
               <button onClick={() => setShowAdd(false)} disabled={submitting}><X size={16} color="#5B7591" /></button>
             </div>
             <p className="text-xs text-muted -mt-2 mb-3">
-              They'll get an email invite to set their own password — no temporary password to hand out.
+              They'll get an email invite to set their own password — no temporary password to hand out. They'll join your hospital automatically.
             </p>
             <div className="flex flex-col gap-3">
               {formError && (
@@ -266,9 +296,9 @@ export default function UsersScreen() {
               <input placeholder="Full name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} disabled={submitting} className="text-sm border border-border rounded-lg px-3 py-2 outline-none disabled:opacity-60" />
               <input placeholder="Email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} disabled={submitting} className="text-sm border border-border rounded-lg px-3 py-2 outline-none disabled:opacity-60" />
               <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} disabled={submitting} className="text-sm border border-border rounded-lg px-3 py-2 outline-none disabled:opacity-60">
-                {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+                {INVITABLE_ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
               </select>
-              <input placeholder="Department" value={form.department} onChange={(e) => setForm({ ...form, department: e.target.value })} disabled={submitting} className="text-sm border border-border rounded-lg px-3 py-2 outline-none disabled:opacity-60" />
+              <input placeholder="Department (optional)" value={form.department} onChange={(e) => setForm({ ...form, department: e.target.value })} disabled={submitting} className="text-sm border border-border rounded-lg px-3 py-2 outline-none disabled:opacity-60" />
               <div className="flex gap-2 mt-1">
                 <button onClick={submit} disabled={submitting} className="flex-1 rounded-lg bg-accent text-white text-xs font-semibold px-4 py-2 disabled:opacity-60">
                   {submitting ? "Sending invite…" : "Send invite"}
