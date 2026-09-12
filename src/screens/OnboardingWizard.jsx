@@ -17,7 +17,7 @@ const SUGGESTED_CATEGORIES = [
 ];
 
 export default function OnboardingWizard() {
-  const { settings, updateSettings, loadDemoData } = useData();
+  const { settings, updateSettings } = useData();
   const { role, profile } = useRole();
   const [step, setStep] = useState(0);
 
@@ -27,18 +27,43 @@ export default function OnboardingWizard() {
   const [categories, setCategories] = useState(settings.categories || []);
   const [newCat, setNewCat] = useState("");
   const [team, setTeam] = useState([{ name: "", email: "", role: ROLES[0] }]);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState(null);
 
-  function finish() {
-    updateSettings({
-      onboardingComplete: true,
-      hospital,
-      departments,
-      categories,
-    });
+  async function finish() {
+    if (submitting) return; // guard against double-click/duplicate submission
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      await updateSettings({
+        onboardingComplete: true,
+        hospital,
+        departments,
+        categories,
+      });
+      // No navigation call needed here — App.jsx's render gate reads
+      // settings.onboardingComplete from this same context, so it moves
+      // past this screen automatically once the awaited update above has
+      // actually updated that state. If the update below throws, we never
+      // reach this point and the wizard correctly stays put.
+    } catch (err) {
+      setSubmitError(err.message || "Failed to save your hospital setup. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
-  function skip() {
-    updateSettings({ onboardingComplete: true });
+  async function skip() {
+    if (submitting) return;
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      await updateSettings({ onboardingComplete: true });
+    } catch (err) {
+      setSubmitError(err.message || "Failed to skip setup. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   function addDepartment() {
@@ -89,7 +114,7 @@ export default function OnboardingWizard() {
               <h2 className="text-base font-semibold text-ink">Welcome, {profile?.name || "there"} — you're signed in as {role}</h2>
               <p className="text-sm text-muted max-w-sm">
                 In the next few steps we'll set up your hospital profile, departments, and equipment categories —
-                then you can start adding equipment or load the demo fleet to explore first.
+                then you can start adding your equipment.
               </p>
             </div>
           )}
@@ -186,22 +211,28 @@ export default function OnboardingWizard() {
               <h2 className="text-base font-semibold text-ink">You're all set, {hospital.name || "there"}!</h2>
               <p className="text-sm text-muted max-w-sm">
                 Your hospital profile, {departments.length} department{departments.length === 1 ? "" : "s"}, and{" "}
-                {categories.length} categor{categories.length === 1 ? "y" : "ies"} are saved. Add your first piece of
-                equipment, or load the demo fleet to explore the app first.
+                {categories.length} categor{categories.length === 1 ? "y" : "ies"} are saved. You can start adding
+                equipment right away.
               </p>
             </div>
           )}
         </div>
 
+        {submitError && (
+          <div className="text-xs text-[#D9364B] bg-[#D9364B0D] border border-[#D9364B4D] rounded-lg px-3 py-2">
+            {submitError}
+          </div>
+        )}
+
         <div className="flex items-center justify-between pt-3 border-t border-divider">
           <div className="flex items-center gap-3">
             {step > 0 && (
-              <button onClick={() => setStep((s) => s - 1)} className="flex items-center gap-1.5 text-sm text-muted hover:text-ink transition-colors">
+              <button onClick={() => setStep((s) => s - 1)} disabled={submitting} className="flex items-center gap-1.5 text-sm text-muted hover:text-ink transition-colors disabled:opacity-60">
                 <ArrowLeft size={15} /> Back
               </button>
             )}
-            <button onClick={skip} className="text-xs text-faint hover:text-muted underline">
-              Skip setup for now
+            <button onClick={skip} disabled={submitting} className="text-xs text-faint hover:text-muted underline disabled:opacity-60">
+              {submitting ? "Skipping…" : "Skip setup for now"}
             </button>
           </div>
 
@@ -210,14 +241,9 @@ export default function OnboardingWizard() {
               Next <ArrowRight size={15} />
             </button>
           ) : (
-            <div className="flex gap-2">
-              <button onClick={() => { finish(); loadDemoData(); }} className="flex items-center gap-1.5 rounded-lg border border-border text-sm font-semibold px-3 py-2 text-ink hover:bg-accent-soft transition-colors">
-                <Sparkles size={14} /> Finish &amp; load demo data
-              </button>
-              <button onClick={finish} className="flex items-center gap-1.5 rounded-lg bg-accent text-white text-sm font-semibold px-4 py-2 hover:opacity-90 transition-opacity">
-                <Check size={15} /> Finish setup
-              </button>
-            </div>
+            <button onClick={finish} disabled={submitting} className="flex items-center gap-1.5 rounded-lg bg-accent text-white text-sm font-semibold px-4 py-2 hover:opacity-90 transition-opacity disabled:opacity-60">
+              <Check size={15} /> {submitting ? "Saving…" : "Finish setup"}
+            </button>
           )}
         </div>
       </div>
