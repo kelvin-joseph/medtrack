@@ -97,9 +97,19 @@ export async function get() {
 export async function save(settings) {
   await ensureMigrated();
   const { data: userData } = await supabase.auth.getUser();
+
+  // PostgREST refuses any UPDATE with no filter at all in the request,
+  // independent of RLS — "UPDATE requires a WHERE clause". RLS already
+  // restricts this to exactly the caller's own hospital's row, so this
+  // filter doesn't change what's allowed; it just states that same
+  // restriction explicitly, in the syntax PostgREST requires.
+  const { data: hospitalId, error: hospitalIdErr } = await supabase.rpc("get_user_hospital_id");
+  if (hospitalIdErr) throw hospitalIdErr;
+
   const { error } = await supabase
     .from(TABLE)
-    .update({ data: settings, updated_by: userData.user?.id });
+    .update({ data: settings, updated_by: userData.user?.id })
+    .eq("hospital_id", hospitalId);
   if (error) throw error;
   return settings;
 }
