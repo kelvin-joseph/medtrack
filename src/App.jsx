@@ -50,6 +50,7 @@ function AuthGate({ children }) {
     authLoading,
     authError,
     needsPasswordSetup,
+    provisioning,
     signIn,
     setAuthError,
   } = useRole();
@@ -102,6 +103,14 @@ function AuthGate({ children }) {
   // Invite/recovery link just logged them in via a one-time token — make
   // them set a real password before they can use the app.
   if (needsPasswordSetup) return <SetPasswordScreen />;
+
+  if (provisioning) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-bg">
+        <div className="text-sm text-muted">Setting up your hospital…</div>
+      </div>
+    );
+  }
 
   if (!profile) {
     // Signed in, but no matching profiles row (or it failed to load) —
