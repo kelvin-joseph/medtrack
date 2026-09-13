@@ -55,6 +55,7 @@ export default function EquipmentFormScreen() {
   );
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState(null);
 
   const departments = [
     ...new Set([
@@ -122,6 +123,8 @@ export default function EquipmentFormScreen() {
   }
 
   async function save(addAnother = false) {
+    if (saving) return; // guard against duplicate submission (double-click, etc.)
+
     const { errors: e, isValid } = validateEquipment(form);
     setErrors(e);
     if (!isValid) {
@@ -130,6 +133,7 @@ export default function EquipmentFormScreen() {
     }
 
     setSaving(true);
+    setSaveError(null);
     const payload = {
       ...form,
       expectedLifespanYears: Number(form.expectedLifespanYears) || 10,
@@ -139,19 +143,26 @@ export default function EquipmentFormScreen() {
       documents: existing?.documents || [],
     };
 
-    if (isEdit) {
-      await updateEquipment(editingEquipmentId, payload);
-      setSaving(false);
-      openEquipment(editingEquipmentId);
-    } else {
-      const created = await addEquipment(payload);
-      setSaving(false);
-      if (addAnother) {
-        setForm(emptyForm());
-        setStep(0);
+    try {
+      if (isEdit) {
+        await updateEquipment(editingEquipmentId, payload);
+        openEquipment(editingEquipmentId);
       } else {
-        openEquipment(created.id);
+        const created = await addEquipment(payload);
+        if (addAnother) {
+          setForm(emptyForm());
+          setStep(0);
+        } else {
+          openEquipment(created.id);
+        }
       }
+      // Navigation above only runs once the awaited call has actually
+      // succeeded -- if it throws, we go straight to catch instead and
+      // never leave this screen.
+    } catch (err) {
+      setSaveError(err.message || "Failed to save equipment. Please try again.");
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -451,6 +462,12 @@ export default function EquipmentFormScreen() {
                 <span className="text-ink font-medium">{value || "—"}</span>
               </div>
             ))}
+          </div>
+        )}
+
+        {saveError && (
+          <div className="text-xs text-[#D9364B] bg-[#D9364B0D] border border-[#D9364B4D] rounded-lg px-3 py-2 mt-3">
+            {saveError}
           </div>
         )}
 

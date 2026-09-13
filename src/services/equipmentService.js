@@ -67,12 +67,30 @@ function toDb(full) {
   return row;
 }
 
-function nextId(existingIds) {
+// IDs are prefixed with the first 8 hex characters of the equipment's own
+// hospital_id (e.g. EQ-4c80e162-001). equipment.id is a single primary key
+// shared across every hospital's rows, so a plain per-hospital sequence
+// (EQ-001, EQ-002, ...) would collide the moment a second hospital's own
+// count reached the same number as an existing row elsewhere — which is
+// exactly what happens for any brand-new hospital, since it always starts
+// counting from zero. The hospital_id segment makes that collision
+// structurally impossible (two different hospitals never share a
+// hospital_id), while the per-hospital numeric suffix still only needs to
+// look at that hospital's own RLS-visible rows, same as before.
+function nextId(existingIds, hospitalId) {
+  // Take the LAST hyphen-delimited segment as the sequence number, not
+  // "all digits in the string" -- the hospital-prefix segment (hex) also
+  // contains digits 0-9, so stripping non-digits from the whole id would
+  // corrupt the count the moment any new-format id existed alongside it.
+  // This handles both the old ("EQ-001") and new ("EQ-4c80e162-001")
+  // formats correctly and uniformly.
   const max = existingIds.reduce((m, id) => {
-    const n = Number(String(id).replace(/\D/g, "")) || 0;
+    const parts = String(id).split("-");
+    const n = Number(parts[parts.length - 1]) || 0;
     return Math.max(m, n);
   }, 0);
-  return `EQ-${String(max + 1).padStart(3, "0")}`;
+  const hospitalPrefix = String(hospitalId).replace(/-/g, "").slice(0, 8);
+  return `EQ-${hospitalPrefix}-${String(max + 1).padStart(3, "0")}`;
 }
 
 // ---------- one-time migration from localStorage ----------
@@ -164,11 +182,18 @@ export async function create(data) {
   await ensureMigrated();
   let id = data.id;
   if (!id) {
+    // hospital_id comes exclusively from the caller's own authenticated
+    // context via this RPC -- never from client input, and never by
+    // reading another hospital's rows. The `.select("id")` below is still
+    // scoped to the caller's own hospital by RLS, same as before.
+    const { data: hospitalId, error: hospitalIdErr } = await supabase.rpc("get_user_hospital_id");
+    if (hospitalIdErr) throw hospitalIdErr;
+
     const { data: rows, error: idErr } = await supabase
       .from(TABLE)
       .select("id");
     if (idErr) throw idErr;
-    id = nextId(rows.map((r) => r.id));
+    id = nextId(rows.map((r) => r.id), hospitalId);
   }
 
   const { data: userData } = await supabase.auth.getUser();
