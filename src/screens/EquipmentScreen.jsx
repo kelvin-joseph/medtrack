@@ -135,13 +135,13 @@ export default function Inventory() {
       </div>
 
       <div className="flex gap-2 flex-wrap">
-        <Select value={dept} onChange={setDept} options={["All", ...DEPARTMENTS]} />
-        <Select value={category} onChange={setCategory} options={["All", ...CATEGORIES]} />
-        <Select value={status} onChange={setStatus} options={["All", ...STATUSES]} />
-        <Select value={riskLevel} onChange={setRiskLevel} options={["All", ...RISK_LEVELS]} label="risk" />
-        <Select value={maintStatus} onChange={setMaintStatus} options={MAINT_STATUSES} />
-        <Select value={manufacturer} onChange={setManufacturer} options={manufacturers} />
-        <Select value={engineer} onChange={setEngineer} options={engineers} />
+        <Select value={dept} onChange={setDept} options={["All", ...DEPARTMENTS]} label="Department" />
+        <Select value={category} onChange={setCategory} options={["All", ...CATEGORIES]} label="Category" />
+        <Select value={status} onChange={setStatus} options={["All", ...STATUSES]} label="Status" />
+        <Select value={riskLevel} onChange={setRiskLevel} options={["All", ...RISK_LEVELS]} label="Risk" />
+        <Select value={maintStatus} onChange={setMaintStatus} options={MAINT_STATUSES} label="Maintenance" />
+        <Select value={manufacturer} onChange={setManufacturer} options={manufacturers} label="Manufacturer" />
+        <Select value={engineer} onChange={setEngineer} options={engineers} label="Engineer" />
         <Select value={sort} onChange={setSort} options={SORTS.map((s) => s.key)} display={(k) => SORTS.find((s) => s.key === k).label} />
       </div>
 
@@ -211,14 +211,18 @@ export default function Inventory() {
   );
 }
 
-function Select({ value, onChange, options, display }) {
+function Select({ value, onChange, options, display, label }) {
   return (
     <select
       value={value}
       onChange={(e) => onChange(e.target.value)}
       className="rounded-lg border border-border bg-surface text-ink text-xs px-3 py-2 outline-none"
     >
-      {options.map((o) => <option key={o} value={o}>{display ? display(o) : o}</option>)}
+      {options.map((o) => (
+        <option key={o} value={o}>
+          {display ? display(o) : label ? `${label}: ${o}` : o}
+        </option>
+      ))}
     </select>
   );
 }
