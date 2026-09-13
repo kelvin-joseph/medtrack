@@ -628,20 +628,34 @@ function DocumentsTab({ eq }) {
     };
   }, [eq.id]);
 
+  // TEMPORARY DIAGNOSTIC — remove once the real cause is found.
+  useEffect(() => {
+    console.log("[DIAG] pendingFile state changed:", pendingFile ? pendingFile.name : null);
+  }, [pendingFile]);
+
   function handleFileChange(e) {
+    console.log("[DIAG] handleFileChange fired");
     try {
       const file = e.target.files?.[0];
+      console.log("[DIAG] selected file:", file ? { name: file.name, type: file.type, size: file.size } : null);
       e.target.value = ""; // reset so re-selecting the same file later still fires onChange
-      if (!file) return; // user cancelled the picker -- not an error
+      if (!file) {
+        console.log("[DIAG] no file (picker cancelled) — returning early");
+        return; // user cancelled the picker -- not an error
+      }
       const validationError = equipmentDocumentsService.validateFile(file);
+      console.log("[DIAG] validation result:", validationError);
       if (validationError) {
         setUploadError(validationError);
         setPendingFile(null);
         return;
       }
       setUploadError(null);
+      console.log("[DIAG] about to call setPendingFile with:", file.name);
       setPendingFile(file);
+      console.log("[DIAG] setPendingFile call completed (state update is async — see the useEffect log above for the actual applied value)");
     } catch (err) {
+      console.log("[DIAG] handleFileChange caught an error:", err);
       setUploadError(err.message || "Failed to read the selected file. Please try again.");
       setPendingFile(null);
     }
