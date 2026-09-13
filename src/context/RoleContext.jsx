@@ -24,6 +24,16 @@ export function RoleProvider({ children }) {
     () => /type=invite|type=recovery/.test(window.location.hash)
   );
   const mounted = useRef(true);
+  // Tracks whose session is currently loaded, so onAuthStateChange can tell
+  // a genuine sign-in/user-change apart from a routine same-user event
+  // (most commonly TOKEN_REFRESHED, which Supabase's client fires on its
+  // own whenever the tab regains focus/visibility -- not a real sign-in).
+  // Without this, every such event was treated identically to a fresh
+  // sign-in: authLoading flipped true, and App.jsx's `if (authLoading)
+  // return <Loading/>` unmounted the entire app to show it, wiping any
+  // in-progress local component state (e.g. a pending file selection) --
+  // even though the user never actually left MedTrack.
+  const currentUserIdRef = useRef(null);
 
   const loadProfile = useCallback(async (userId) => {
     const { data, error } = await supabase.from("profiles").select("*").eq("id", userId).single();
@@ -45,19 +55,31 @@ export function RoleProvider({ children }) {
     supabase.auth.getSession().then(({ data: { session: initial } }) => {
       if (!mounted.current) return;
       setSession(initial);
+      currentUserIdRef.current = initial?.user?.id ?? null;
       if (initial) loadProfile(initial.user.id);
       else setAuthLoading(false);
     });
 
     const { data: subscription } = supabase.auth.onAuthStateChange((_event, next) => {
       setSession(next);
-      if (next) {
-        setAuthLoading(true);
-        loadProfile(next.user.id);
-      } else {
+      const nextUserId = next?.user?.id ?? null;
+      const isSameUser = Boolean(nextUserId) && nextUserId === currentUserIdRef.current;
+      currentUserIdRef.current = nextUserId;
+
+      if (!next) {
         setProfile(null);
         setAuthLoading(false);
+        return;
       }
+      if (isSameUser) {
+        // Routine event for someone already signed in and already loaded
+        // (token refresh, tab-focus recheck, etc.) -- session state above
+        // is kept fresh for future API calls, but there's no reason to
+        // show the loading gate or re-fetch a profile that hasn't changed.
+        return;
+      }
+      setAuthLoading(true);
+      loadProfile(next.user.id);
     });
 
     return () => {
