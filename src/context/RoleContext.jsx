@@ -121,7 +121,18 @@ export function RoleProvider({ children }) {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
-      options: { data: { pending_hospital_name: hospitalName } },
+      options: {
+        // Without this, Supabase falls back to whatever Site URL is
+        // configured in the dashboard -- which is how confirmation links
+        // ended up pointing at localhost. window.location.origin is used
+        // rather than a hardcoded production URL so this is automatically
+        // correct wherever the app is actually running from (production,
+        // a preview deploy, or local dev) with no need to update this
+        // string if the domain ever changes. Supabase still validates it
+        // against the dashboard's configured Redirect URLs allow-list.
+        emailRedirectTo: window.location.origin,
+        data: { pending_hospital_name: hospitalName },
+      },
     });
     if (error) {
       setAuthError(error.message);
