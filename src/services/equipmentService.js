@@ -279,10 +279,8 @@ export async function addRepairRecord(id, record) {
   });
 }
 
-export async function addDocument(id, doc) {
-  const eq = await getById(id);
-  if (!eq) return null;
-  return update(id, {
-    documents: [{ id: `D-${Date.now()}`, ...doc }, ...eq.documents],
-  });
-}
+// NOTE: real document uploads (actual file bytes + equipment_documents
+// table rows) are handled by equipmentDocumentsService.js, not here.
+// `documents` on this object is legacy/demo-seed data only -- see
+// EquipmentProfileScreen.jsx's DocumentsTab for how the two are
+// distinguished in the UI.

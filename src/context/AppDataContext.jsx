@@ -258,15 +258,12 @@ export function AppDataProvider({ children }) {
     [refreshFromServices, logAudit, showToast],
   );
 
-  const addDocument = useCallback(
-    async (id, doc) => {
-      await equipmentService.addDocument(id, doc);
-      await refreshFromServices();
-      logAudit("Uploaded document", id, doc.name);
-      showToast("Document added.");
-    },
-    [refreshFromServices, logAudit, showToast],
-  );
+  // Real document uploads go straight from EquipmentProfileScreen's
+  // DocumentsTab to equipmentDocumentsService (Storage + equipment_documents
+  // table) -- they're not part of the equipment record's own patch/refresh
+  // cycle the way maintenance/repair records are, so there's no
+  // addDocument here. logAudit/showToast (both exposed below) are called
+  // directly by DocumentsTab for the audit trail + toast on upload.
 
   const setCriticality = useCallback(
     async (id, clinicalCriticality) => {
@@ -518,6 +515,7 @@ export function AppDataProvider({ children }) {
         usersError,
         settings,
         auditLog,
+        logAudit,
         readNotificationIds,
         toast,
         showToast,
@@ -535,7 +533,6 @@ export function AppDataProvider({ children }) {
         archiveEquipment,
         addMaintenanceRecord,
         addRepairRecord,
-        addDocument,
         setCriticality,
         setCondition,
         addWorkOrder,

@@ -1,11 +1,13 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useApp, SCREENS } from "../context/AppContext.jsx";
 import {
   ArrowLeft, MapPin, Wrench, AlertTriangle, Cpu, QrCode as QrIcon, FileText,
   DollarSign, GitCommitVertical, Plus, Download, Printer, Pencil, Archive, Trash2, CalendarPlus,
+  Loader2, Upload, X,
 } from "lucide-react";
 import { useData } from "../context/AppDataContext.jsx";
 import { useRole } from "../context/RoleContext.jsx";
+import * as equipmentDocumentsService from "../services/equipmentDocumentsService.js";
 import { CATEGORY_ICON } from "../data/equipment.js";
 import { NOW, daysBetween, fmtDate } from "../lib/dates.js";
 import RiskGauge from "../components/RiskGauge.jsx";
@@ -582,35 +584,241 @@ function QRTab({ eq }) {
 }
 
 /* ---------------------------------- Documents ---------------------------------- */
+// Real uploaded documents (actual file bytes in Storage + a row in
+// equipment_documents) are the source of truth here, fetched independently
+// of the equipment object itself. `eq.documents` is legacy/demo-seed JSON
+// data (see equipmentService.js) that never had a real file behind it even
+// before this change -- it's rendered separately below, clearly labeled,
+// with no download action, so existing demo fleets don't just lose their
+// document rows with no explanation.
 function DocumentsTab({ eq }) {
   const { can } = useRole();
-  const { addDocument } = useData();
+  const { logAudit, showToast } = useData();
+  const fileInputRef = useRef(null);
+
+  const [documents, setDocuments] = useState([]);
+  const [loadingDocs, setLoadingDocs] = useState(true);
+  const [listError, setListError] = useState(null);
+
+  const [pendingFile, setPendingFile] = useState(null);
+  const [docType, setDocType] = useState("Other");
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState(null);
+
+  const [downloadingId, setDownloadingId] = useState(null);
+  const [downloadError, setDownloadError] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoadingDocs(true);
+    setListError(null);
+    equipmentDocumentsService
+      .list(eq.id)
+      .then((docs) => {
+        if (!cancelled) setDocuments(docs);
+      })
+      .catch((err) => {
+        if (!cancelled) setListError(err.message || "Failed to load documents.");
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingDocs(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [eq.id]);
+
+  function handleFileChange(e) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // reset so re-selecting the same file later still fires onChange
+    if (!file) return; // user cancelled the picker -- not an error
+    const validationError = equipmentDocumentsService.validateFile(file);
+    if (validationError) {
+      setUploadError(validationError);
+      setPendingFile(null);
+      return;
+    }
+    setUploadError(null);
+    setPendingFile(file);
+  }
+
+  function cancelPendingUpload() {
+    setPendingFile(null);
+    setUploadError(null);
+  }
+
+  async function confirmUpload() {
+    if (uploading || !pendingFile) return; // guard against duplicate submission
+    setUploading(true);
+    setUploadError(null);
+    try {
+      const inserted = await equipmentDocumentsService.upload(eq.id, pendingFile, {
+        documentType: docType,
+      });
+      setDocuments((prev) => [inserted, ...prev]);
+      setPendingFile(null);
+      setDocType("Other");
+      logAudit("Uploaded document", eq.id, inserted.name);
+      showToast("Document uploaded.");
+    } catch (err) {
+      setUploadError(err.message || "Failed to upload document. Please try again.");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function handleView(doc) {
+    if (downloadingId) return;
+    setDownloadError(null);
+    setDownloadingId(doc.id);
+    try {
+      const url = await equipmentDocumentsService.getSignedUrl(doc.file_path);
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      setDownloadError(err.message || "Failed to open document. Please try again.");
+    } finally {
+      setDownloadingId(null);
+    }
+  }
+
+  const legacyDocs = eq.documents || [];
 
   return (
     <div className="rounded-xl border border-border bg-surface p-5 shadow-card">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-semibold text-ink">Documents</h3>
-        {can("uploadDocuments") && (
+        {can("uploadDocuments") && !pendingFile && (
           <button
-            onClick={() => addDocument(eq.id, { name: "New Document.pdf", type: "Other" })}
+            onClick={() => fileInputRef.current?.click()}
             className="flex items-center gap-1.5 rounded-lg bg-accent text-white text-xs font-semibold px-3 py-1.5 hover:opacity-90 transition-opacity"
           >
             <Plus size={13} /> Upload document
           </button>
         )}
       </div>
-      {eq.documents.length === 0 && <div className="text-sm text-muted py-4 text-center">No documents uploaded yet.</div>}
-      <div className="flex flex-col">
-        {eq.documents.map((d, i) => (
-          <div key={d.id} className="flex items-center gap-3 py-2.5" style={{ borderTop: i === 0 ? "none" : "1px solid #E5EEF7" }}>
-            <FileText size={15} color="#2F7DE1" className="shrink-0" />
-            <div className="flex-1">
-              <div className="text-sm text-ink">{d.name}</div>
-              <div className="text-[11px] text-muted">{d.type} · uploaded {fmtDate(d.uploadedDate)}</div>
-            </div>
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
+        onChange={handleFileChange}
+        className="hidden"
+      />
+
+      {pendingFile && (
+        <div className="rounded-lg border border-border bg-accent-soft p-3 mb-3 flex flex-col gap-2.5">
+          <div className="flex items-center gap-2 text-sm text-ink">
+            <FileText size={14} color="#2F7DE1" className="shrink-0" />
+            <span className="font-medium truncate">{pendingFile.name}</span>
+            <span className="text-[11px] text-muted shrink-0">
+              ({Math.max(1, Math.round(pendingFile.size / 1024))} KB)
+            </span>
           </div>
-        ))}
-      </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <select
+              value={docType}
+              onChange={(e) => setDocType(e.target.value)}
+              disabled={uploading}
+              className="text-xs border border-border rounded-lg px-2 py-1.5 outline-none bg-surface"
+            >
+              {equipmentDocumentsService.DOCUMENT_TYPES.map((t) => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
+            <button
+              onClick={confirmUpload}
+              disabled={uploading}
+              className="flex items-center gap-1.5 rounded-lg bg-accent text-white text-xs font-semibold px-3 py-1.5 hover:opacity-90 transition-opacity disabled:opacity-60"
+            >
+              {uploading ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
+              {uploading ? "Uploading…" : "Upload"}
+            </button>
+            <button
+              onClick={cancelPendingUpload}
+              disabled={uploading}
+              className="flex items-center gap-1 rounded-lg border border-border text-xs font-semibold px-3 py-1.5 text-ink hover:bg-surface transition-colors disabled:opacity-60"
+            >
+              <X size={13} /> Cancel
+            </button>
+          </div>
+          <div className="text-[11px] text-muted">
+            Max {Math.round(equipmentDocumentsService.MAX_FILE_SIZE_BYTES / (1024 * 1024))}MB ·{" "}
+            {equipmentDocumentsService.ALLOWED_FILE_TYPES_LABEL}
+          </div>
+        </div>
+      )}
+
+      {uploadError && (
+        <div className="text-xs text-[#D9364B] bg-[#D9364B0D] border border-[#D9364B4D] rounded-lg px-3 py-2 mb-3">
+          {uploadError}
+        </div>
+      )}
+      {downloadError && (
+        <div className="text-xs text-[#D9364B] bg-[#D9364B0D] border border-[#D9364B4D] rounded-lg px-3 py-2 mb-3">
+          {downloadError}
+        </div>
+      )}
+
+      {loadingDocs && (
+        <div className="flex items-center gap-2 text-sm text-muted py-4 justify-center">
+          <Loader2 size={14} className="animate-spin" /> Loading documents…
+        </div>
+      )}
+
+      {!loadingDocs && listError && (
+        <div className="text-xs text-[#D9364B] bg-[#D9364B0D] border border-[#D9364B4D] rounded-lg px-3 py-2 mb-3">
+          {listError}
+        </div>
+      )}
+
+      {!loadingDocs && !listError && documents.length === 0 && legacyDocs.length === 0 && (
+        <div className="text-sm text-muted py-4 text-center">No documents uploaded yet.</div>
+      )}
+
+      {!loadingDocs && documents.length > 0 && (
+        <div className="flex flex-col">
+          {documents.map((d, i) => (
+            <div
+              key={d.id}
+              className="flex items-center gap-3 py-2.5"
+              style={{ borderTop: i === 0 ? "none" : "1px solid #E5EEF7" }}
+            >
+              <FileText size={15} color="#2F7DE1" className="shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="text-sm text-ink truncate">{d.name}</div>
+                <div className="text-[11px] text-muted">{d.type} · uploaded {fmtDate(d.uploaded_date)}</div>
+              </div>
+              <button
+                onClick={() => handleView(d)}
+                disabled={downloadingId === d.id}
+                className="flex items-center gap-1 rounded-lg border border-border text-xs font-semibold px-2.5 py-1.5 text-ink hover:bg-accent-soft transition-colors disabled:opacity-60 shrink-0"
+              >
+                {downloadingId === d.id ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
+                View
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {legacyDocs.length > 0 && (
+        <div className="mt-4 pt-3" style={{ borderTop: "1px solid #E5EEF7" }}>
+          <div className="text-[11px] uppercase tracking-wide text-muted font-mono mb-2">
+            Demo data (not real files)
+          </div>
+          <div className="flex flex-col">
+            {legacyDocs.map((d, i) => (
+              <div key={d.id} className="flex items-center gap-3 py-2 opacity-60">
+                <FileText size={14} className="shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm text-ink truncate">{d.name}</div>
+                  <div className="text-[11px] text-muted">{d.type} · uploaded {fmtDate(d.uploadedDate)}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
