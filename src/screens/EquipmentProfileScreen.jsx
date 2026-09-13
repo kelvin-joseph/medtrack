@@ -629,17 +629,22 @@ function DocumentsTab({ eq }) {
   }, [eq.id]);
 
   function handleFileChange(e) {
-    const file = e.target.files?.[0];
-    e.target.value = ""; // reset so re-selecting the same file later still fires onChange
-    if (!file) return; // user cancelled the picker -- not an error
-    const validationError = equipmentDocumentsService.validateFile(file);
-    if (validationError) {
-      setUploadError(validationError);
+    try {
+      const file = e.target.files?.[0];
+      e.target.value = ""; // reset so re-selecting the same file later still fires onChange
+      if (!file) return; // user cancelled the picker -- not an error
+      const validationError = equipmentDocumentsService.validateFile(file);
+      if (validationError) {
+        setUploadError(validationError);
+        setPendingFile(null);
+        return;
+      }
+      setUploadError(null);
+      setPendingFile(file);
+    } catch (err) {
+      setUploadError(err.message || "Failed to read the selected file. Please try again.");
       setPendingFile(null);
-      return;
     }
-    setUploadError(null);
-    setPendingFile(file);
   }
 
   function cancelPendingUpload() {

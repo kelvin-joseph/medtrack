@@ -20,6 +20,17 @@ const ALLOWED_MIME_TYPES = new Set([
 
 export const ALLOWED_FILE_TYPES_LABEL = "PDF, Word, Excel, JPG, or PNG";
 
+// Same file types as ALLOWED_MIME_TYPES, expressed as extensions -- used as
+// a fallback when the browser's reported MIME type isn't one we recognize.
+const ALLOWED_EXTENSIONS = new Set([
+  ".pdf", ".png", ".jpg", ".jpeg", ".doc", ".docx", ".xls", ".xlsx",
+]);
+
+function getExtension(fileName) {
+  const match = /\.[^./\\]+$/.exec(String(fileName || ""));
+  return match ? match[0].toLowerCase() : "";
+}
+
 export const DOCUMENT_TYPES = [
   "Manual",
   "Service Manual",
@@ -34,13 +45,18 @@ export function validateFile(file) {
   if (file.size > MAX_FILE_SIZE_BYTES) {
     return `"${file.name}" is too large. Maximum file size is ${MAX_FILE_SIZE_LABEL}.`;
   }
-  // Some browsers/OSes leave `type` blank for certain files (e.g. some
-  // scanners' PDFs) -- only reject when we got a MIME type and it's one we
-  // know we don't want, rather than blocking anything with no type at all.
-  if (file.type && !ALLOWED_MIME_TYPES.has(file.type)) {
-    return `Unsupported file type. Please upload a ${ALLOWED_FILE_TYPES_LABEL} file.`;
-  }
-  return null;
+  // Trust an exact, known-good MIME type outright. Otherwise -- including
+  // when the browser reports something generic/unreliable (e.g.
+  // "application/octet-stream"), a non-standard variant (e.g. "image/jpg"
+  // instead of "image/jpeg"), or no type at all -- fall back to the file
+  // extension. MIME reporting varies enough across browsers/OSes that
+  // requiring an exact match rejects real, valid files; the extension is
+  // still checked against the same fixed allowlist, so an unsupported
+  // file can't get through just because its MIME type happens to be
+  // generic.
+  if (file.type && ALLOWED_MIME_TYPES.has(file.type)) return null;
+  if (ALLOWED_EXTENSIONS.has(getExtension(file.name))) return null;
+  return `Unsupported file type. Please upload a ${ALLOWED_FILE_TYPES_LABEL} file.`;
 }
 
 function sanitizeFileName(name) {
