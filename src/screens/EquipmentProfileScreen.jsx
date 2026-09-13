@@ -608,6 +608,10 @@ function DocumentsTab({ eq }) {
   const [downloadingId, setDownloadingId] = useState(null);
   const [downloadError, setDownloadError] = useState(null);
 
+  const [confirmDeleteDoc, setConfirmDeleteDoc] = useState(null); // the real document object, or null
+  const [deletingId, setDeletingId] = useState(null);
+  const [deleteError, setDeleteError] = useState(null);
+
   useEffect(() => {
     let cancelled = false;
     setLoadingDocs(true);
@@ -700,7 +704,28 @@ function DocumentsTab({ eq }) {
     }
   }
 
+  async function handleConfirmDelete() {
+    const doc = confirmDeleteDoc;
+    if (!doc || deletingId) return;
+    setDeleteError(null);
+    setDeletingId(doc.id);
+    try {
+      await equipmentDocumentsService.remove(doc.id, doc.file_path);
+      setDocuments((prev) => prev.filter((d) => d.id !== doc.id));
+      setConfirmDeleteDoc(null);
+      logAudit("Deleted document", eq.id, doc.name);
+      showToast("Document deleted.");
+    } catch (err) {
+      // Leave the confirmation open and the document in the list -- never
+      // show it as deleted when it wasn't.
+      setDeleteError(err.message || "Failed to delete document. Please try again.");
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   const legacyDocs = eq.documents || [];
+
 
   return (
     <div className="rounded-xl border border-border bg-surface p-5 shadow-card">
@@ -777,6 +802,11 @@ function DocumentsTab({ eq }) {
           {downloadError}
         </div>
       )}
+      {deleteError && (
+        <div className="text-xs text-[#D9364B] bg-[#D9364B0D] border border-[#D9364B4D] rounded-lg px-3 py-2 mb-3">
+          {deleteError}
+        </div>
+      )}
 
       {loadingDocs && (
         <div className="flex items-center gap-2 text-sm text-muted py-4 justify-center">
@@ -815,10 +845,33 @@ function DocumentsTab({ eq }) {
                 {downloadingId === d.id ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
                 View
               </button>
+              {can("uploadDocuments") && (
+                <button
+                  onClick={() => { setDeleteError(null); setConfirmDeleteDoc(d); }}
+                  disabled={deletingId === d.id}
+                  title="Delete document"
+                  className="flex items-center justify-center h-7 w-7 rounded-lg border border-border text-[#D9364B] hover:bg-[#D9364B0D] transition-colors disabled:opacity-60 shrink-0"
+                >
+                  {deletingId === d.id ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                </button>
+              )}
             </div>
           ))}
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!confirmDeleteDoc}
+        title="Delete this document?"
+        message={
+          confirmDeleteDoc
+            ? `This permanently removes "${confirmDeleteDoc.name}" and its uploaded file. This cannot be undone.`
+            : ""
+        }
+        confirmLabel={deletingId ? "Deleting…" : "Delete permanently"}
+        onConfirm={handleConfirmDelete}
+        onCancel={() => { setConfirmDeleteDoc(null); setDeleteError(null); }}
+      />
 
       {legacyDocs.length > 0 && (
         <div className="mt-4 pt-3" style={{ borderTop: "1px solid #E5EEF7" }}>

@@ -143,3 +143,37 @@ export async function getSignedUrl(filePath, expiresInSeconds = 60) {
   if (error) throw error;
   return data.signedUrl;
 }
+
+/**
+ * Deletes an uploaded document: removes the actual Storage object first, at
+ * its existing file_path -- never a path constructed from user input --
+ * then, only if that succeeds, deletes the corresponding equipment_documents
+ * row. If Storage removal fails, the database row is left untouched and the
+ * error is thrown as-is: nothing was deleted, so nothing is reported as
+ * deleted. If Storage succeeds but the database delete fails or matches no
+ * row, that's reported as its own distinct, explicit error -- the file is
+ * genuinely gone, but its record still lists it, so the caller needs to
+ * know exactly that combination happened, not just "delete failed".
+ */
+export async function remove(documentId, filePath) {
+  const { error: storageErr } = await supabase.storage.from(BUCKET).remove([filePath]);
+  if (storageErr) throw storageErr;
+
+  const { data: deletedRows, error: deleteErr } = await supabase
+    .from(TABLE)
+    .delete()
+    .eq("id", documentId)
+    .select();
+  if (deleteErr) {
+    throw new Error(
+      `The file was removed from storage, but its database record could not be deleted: ${deleteErr.message}`,
+    );
+  }
+  if (!deletedRows || deletedRows.length === 0) {
+    // RLS scopes this delete to the caller's own hospital; a 0-row result
+    // means nothing matched (already gone, or not theirs).
+    throw new Error(
+      "The file was removed from storage, but its database record could not be found or you don't have permission to delete it.",
+    );
+  }
+}
