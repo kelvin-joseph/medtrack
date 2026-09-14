@@ -209,7 +209,7 @@ function CameraScanner({ onDecode, onCancel, onError }) {
 
 /* ---------------------------------------------------------------------- */
 function ScannedTag({ eq, onBack }) {
-  const { addTicket } = useData();
+  const { addTicket, addWorkOrder } = useData();
   const [panel, setPanel] = useState(null);
   const [reported, setReported] = useState(false);
 
@@ -218,6 +218,10 @@ function ScannedTag({ eq, onBack }) {
   const [docsError, setDocsError] = useState(null);
   const [viewingId, setViewingId] = useState(null);
   const [viewError, setViewError] = useState(null);
+
+  // idle | submitting | success | error
+  const [maintenanceStatus, setMaintenanceStatus] = useState("idle");
+  const [maintenanceError, setMaintenanceError] = useState(null);
 
   const Icon = CATEGORY_ICON[eq.category] || Wrench;
 
@@ -255,6 +259,32 @@ function ScannedTag({ eq, onBack }) {
       setViewError(err.message || "Failed to open document. Please try again.");
     } finally {
       setViewingId(null);
+    }
+  }
+
+  async function handleRequestMaintenance() {
+    if (maintenanceStatus === "submitting") return; // guard against duplicate submission
+    setMaintenanceStatus("submitting");
+    setMaintenanceError(null);
+    try {
+      await addWorkOrder({
+        equipmentId: eq.id,
+        type: "Corrective",
+        title: `Maintenance request — ${eq.name}`,
+        description: "Requested via Quick QR Scan.",
+        priority: "Medium",
+        createdBy: "Department Staff (QR scan)",
+        // Only set assignedEngineer when equipment actually has one -- an
+        // unassigned work order is a real, supported state (a null
+        // assigned_engineer column), not something to fill in with a
+        // placeholder value. "Unassigned" stays a display-only fallback,
+        // same as everywhere else in the app -- never written to the DB.
+        ...(eq.assignedEngineer ? { assignedEngineer: eq.assignedEngineer } : {}),
+      });
+      setMaintenanceStatus("success");
+    } catch (err) {
+      setMaintenanceError(err.message || "Failed to create maintenance request. Please try again.");
+      setMaintenanceStatus("error");
     }
   }
 
@@ -314,7 +344,30 @@ function ScannedTag({ eq, onBack }) {
 
         {panel === "maintenance-request" && (
           <Panel title="Request maintenance">
-            A maintenance request will be created for {eq.name} and routed to {eq.assignedEngineer || "Unassigned"}. (Notification delivery arrives with the backend.)
+            {maintenanceStatus === "success" ? (
+              <div className="rounded-lg bg-[#1F9D6B17] text-[#1F9D6B] px-3 py-2 -mx-1">
+                Maintenance request created for {eq.name} and routed to {eq.assignedEngineer || "Unassigned"}.
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2">
+                <div>
+                  A maintenance request will be created for {eq.name} and routed to {eq.assignedEngineer || "Unassigned"}.
+                </div>
+                {maintenanceError && <div className="text-[#D9364B]">{maintenanceError}</div>}
+                <button
+                  onClick={handleRequestMaintenance}
+                  disabled={maintenanceStatus === "submitting"}
+                  className="flex items-center justify-center gap-1.5 rounded-lg bg-accent text-white text-xs font-semibold px-3 py-2 hover:opacity-90 transition-opacity disabled:opacity-60 self-start"
+                >
+                  {maintenanceStatus === "submitting" && <Loader2 size={13} className="animate-spin" />}
+                  {maintenanceStatus === "submitting"
+                    ? "Creating…"
+                    : maintenanceStatus === "error"
+                      ? "Retry"
+                      : "Confirm request"}
+                </button>
+              </div>
+            )}
           </Panel>
         )}
         {panel === "maintenance" && (
