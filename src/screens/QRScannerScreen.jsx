@@ -270,7 +270,7 @@ function ScannedTag({ eq, onBack }) {
 
         {panel === "maintenance-request" && (
           <Panel title="Request maintenance">
-            A maintenance request will be created for {eq.name} and routed to {eq.assignedEngineer}. (Notification delivery arrives with the backend.)
+            A maintenance request will be created for {eq.name} and routed to {eq.assignedEngineer || "Unassigned"}. (Notification delivery arrives with the backend.)
           </Panel>
         )}
         {panel === "maintenance" && (
