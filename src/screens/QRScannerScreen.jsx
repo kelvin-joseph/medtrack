@@ -2,13 +2,14 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import jsQR from "jsqr";
 import {
   QrCode, Search, ArrowLeft, AlertTriangle, Wrench, History, FileText,
-  ShieldCheck, BookOpen, Camera, CameraOff, X,
+  ShieldCheck, BookOpen, Camera, CameraOff, X, Loader2, Download,
 } from "lucide-react";
 import { useData } from "../context/AppDataContext.jsx";
 import { useApp } from "../context/AppContext.jsx";
 import { CATEGORY_ICON } from "../data/equipment.js";
 import { RiskBadge, StatusBadge } from "../components/Badges.jsx";
 import { fmtDate } from "../lib/dates.js";
+import * as equipmentDocumentsService from "../services/equipmentDocumentsService.js";
 
 // Real camera scanning: requests the device camera, decodes QR codes from
 // the live video feed with jsQR, and matches the decoded asset reference
@@ -212,7 +213,50 @@ function ScannedTag({ eq, onBack }) {
   const [panel, setPanel] = useState(null);
   const [reported, setReported] = useState(false);
 
+  const [documents, setDocuments] = useState([]);
+  const [docsLoading, setDocsLoading] = useState(true);
+  const [docsError, setDocsError] = useState(null);
+  const [viewingId, setViewingId] = useState(null);
+  const [viewError, setViewError] = useState(null);
+
   const Icon = CATEGORY_ICON[eq.category] || Wrench;
+
+  useEffect(() => {
+    let cancelled = false;
+    setDocsLoading(true);
+    setDocsError(null);
+    equipmentDocumentsService
+      .list(eq.id)
+      .then((rows) => {
+        if (!cancelled) setDocuments(rows);
+      })
+      .catch((err) => {
+        // Never let a document-load failure break the rest of the scanned
+        // tag screen -- the manual/safety panels just show their own
+        // error state instead.
+        if (!cancelled) setDocsError(err.message || "Failed to load documents.");
+      })
+      .finally(() => {
+        if (!cancelled) setDocsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [eq.id]);
+
+  async function handleViewDoc(doc) {
+    if (viewingId) return;
+    setViewError(null);
+    setViewingId(doc.id);
+    try {
+      const url = await equipmentDocumentsService.getSignedUrl(doc.file_path);
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      setViewError(err.message || "Failed to open document. Please try again.");
+    } finally {
+      setViewingId(null);
+    }
+  }
 
   function quickReport() {
     addTicket({
@@ -291,9 +335,76 @@ function ScannedTag({ eq, onBack }) {
             )}
           </Panel>
         )}
-        {panel === "manual" && <Panel title="User manual">{eq.manufacturer} {eq.model} manual — document upload arrives with the Documents module backend.</Panel>}
-        {panel === "safety" && <Panel title="Safety instructions">Follow standard {eq.category.toLowerCase()} safety protocol. Full safety documents arrive with the Documents module backend.</Panel>}
+        {panel === "manual" && (
+          <Panel title="User manual">
+            <DocumentList
+              documents={documents}
+              docType="Manual"
+              loading={docsLoading}
+              loadError={docsError}
+              emptyMessage="No manual uploaded yet."
+              viewingId={viewingId}
+              viewError={viewError}
+              onView={handleViewDoc}
+            />
+          </Panel>
+        )}
+        {panel === "safety" && (
+          <Panel title="Safety instructions">
+            <DocumentList
+              documents={documents}
+              docType="Safety Instructions"
+              loading={docsLoading}
+              loadError={docsError}
+              emptyMessage="No safety instructions uploaded yet."
+              viewingId={viewingId}
+              viewError={viewError}
+              onView={handleViewDoc}
+            />
+          </Panel>
+        )}
       </div>
+    </div>
+  );
+}
+
+/** Filters `documents` to the given type and renders them with a View
+ * action reusing the existing signed-URL flow -- same pattern as the
+ * Documents tab in EquipmentProfileScreen.jsx, no separate logic. */
+function DocumentList({ documents, docType, loading, loadError, emptyMessage, viewingId, viewError, onView }) {
+  if (loading) {
+    return (
+      <div className="flex items-center gap-2 text-muted">
+        <Loader2 size={13} className="animate-spin" /> Loading…
+      </div>
+    );
+  }
+  if (loadError) {
+    return <div className="text-[#D9364B]">{loadError}</div>;
+  }
+
+  const matches = documents.filter((d) => d.type === docType);
+
+  return (
+    <div className="flex flex-col gap-2">
+      {viewError && <div className="text-[#D9364B]">{viewError}</div>}
+      {matches.length === 0 ? (
+        emptyMessage
+      ) : (
+        matches.map((d) => (
+          <div key={d.id} className="flex items-center justify-between gap-2">
+            <span className="truncate">{d.name}</span>
+            <button
+              onClick={() => onView(d)}
+              disabled={viewingId === d.id}
+              className="flex items-center gap-1 rounded-md border border-border text-[11px] font-semibold px-2 py-1 text-ink hover:bg-accent-soft transition-colors disabled:opacity-60 shrink-0"
+            >
+              {viewingId === d.id ? <Loader2 size={11} className="animate-spin" /> : <Download size={11} />}
+              View
+            </button>
+          </div>
+        ))
+      )}
     </div>
   );
 }

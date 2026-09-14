@@ -34,6 +34,7 @@ function getExtension(fileName) {
 export const DOCUMENT_TYPES = [
   "Manual",
   "Service Manual",
+  "Safety Instructions",
   "Warranty",
   "Calibration Certificate",
   "Other",
