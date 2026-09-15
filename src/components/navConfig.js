@@ -21,4 +21,4 @@ export const NAV_ITEMS = [
 // Bottom tab bar only has room for a handful of one-thumb-reach items on
 // mobile; everything else lives behind "More". Keeps the most-used,
 // time-sensitive screens fastest to reach.
-export const MOBILE_PRIMARY_KEYS = ["dashboard", "equipment", "fault-reports", "ai-predictions"];
+export const MOBILE_PRIMARY_KEYS = ["dashboard", "equipment", "fault-reports", "qr-scanner"];
