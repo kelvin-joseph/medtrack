@@ -36,14 +36,15 @@ export default function FaultReporting() {
     department: "",
   });
 
+  const [submitError, setSubmitError] = useState(null);
+
   async function submit() {
-    console.log("[FaultReport] submit() called, form:", form);
+    setSubmitError(null);
     if (!form.equipmentId || !form.description) {
-      console.log("[FaultReport] blocked by validation guard");
       return;
     }
     try {
-      const created = await addTicket({
+      await addTicket({
         equipmentId: form.equipmentId,
         category: form.category,
         description: form.description,
@@ -54,7 +55,6 @@ export default function FaultReporting() {
           getEquipmentById(form.equipmentId)?.department ||
           "—",
       });
-      console.log("[FaultReport] addTicket resolved:", created);
       setShowForm(false);
       setForm({
         equipmentId: "",
@@ -64,7 +64,8 @@ export default function FaultReporting() {
         department: "",
       });
     } catch (err) {
-      console.error("[FaultReport] addTicket threw:", err);
+      console.error("[FaultReport] Failed to submit fault report:", err);
+      setSubmitError(err.message || "Failed to submit fault report. Please try again.");
     }
   }
 
@@ -132,6 +133,11 @@ export default function FaultReporting() {
             Photo/video/voice-note attachments arrive with the backend in a
             later phase.
           </p>
+          {submitError && (
+            <div className="text-xs text-[#D9364B] bg-[#D9364B0D] border border-[#D9364B4D] rounded-lg px-3 py-2">
+              {submitError}
+            </div>
+          )}
           <div className="flex gap-2">
             <button
               onClick={submit}
