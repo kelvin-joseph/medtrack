@@ -287,7 +287,7 @@ function buildComprehensiveWorkbook({ equipment, tickets, auditLog }) {
 }
 
 export default function ReportsScreen() {
-  const { equipment, tickets, auditLog } = useData();
+  const { equipment, tickets, auditLog, showToast } = useData();
   const [busyKey, setBusyKey] = useState(null);
 
   const reports = buildReports({ equipment, tickets, auditLog });
@@ -305,6 +305,8 @@ export default function ReportsScreen() {
           rows: report.rows(),
         }],
       });
+    } catch (err) {
+      showToast(err.message || `Failed to export "${report.title}". Please try again.`, "error");
     } finally {
       setBusyKey(null);
     }
@@ -323,6 +325,8 @@ export default function ReportsScreen() {
     setBusyKey("comprehensive");
     try {
       await exportXLSX(buildComprehensiveWorkbook({ equipment, tickets, auditLog }));
+    } catch (err) {
+      showToast(err.message || "Failed to generate the comprehensive report. Please try again.", "error");
     } finally {
       setBusyKey(null);
     }
