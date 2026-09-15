@@ -1,7 +1,7 @@
 import { useState } from "react";
 import {
   Settings, Building2, MapPin, Tag, Wrench, Cpu, Bell, Database,
-  Plus, X, Sparkles, RotateCcw, Trash2, Download,
+  Plus, X, Sparkles, RotateCcw, Trash2, Download, Loader2,
 } from "lucide-react";
 import { useData } from "../context/AppDataContext.jsx";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
@@ -58,9 +58,23 @@ export default function SettingsScreen() {
 function HospitalProfileTab() {
   const { settings, updateSettingsSection } = useData();
   const [form, setForm] = useState(settings.hospital);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState(null);
 
-  function save() {
-    updateSettingsSection("hospital", form);
+  async function save() {
+    if (saving) return; // guard against duplicate submission
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await updateSettingsSection("hospital", form);
+      // Success feedback: updateSettingsSection already shows a "Settings
+      // saved." toast on success (same shared pattern used elsewhere, e.g.
+      // addWorkOrder) -- no separate confirmation needed here.
+    } catch (err) {
+      setSaveError(err.message || "Failed to save hospital profile. Please try again.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -91,8 +105,18 @@ function HospitalProfileTab() {
           <TextInput value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
         </FormField>
       </div>
-      <button onClick={save} className="self-start rounded-lg bg-accent text-white text-xs font-semibold px-4 py-2.5 hover:opacity-90 transition-opacity">
-        Save hospital profile
+      {saveError && (
+        <div className="text-xs text-[#D9364B] bg-[#D9364B0D] border border-[#D9364B4D] rounded-lg px-3 py-2">
+          {saveError}
+        </div>
+      )}
+      <button
+        onClick={save}
+        disabled={saving}
+        className="self-start flex items-center gap-1.5 rounded-lg bg-accent text-white text-xs font-semibold px-4 py-2.5 hover:opacity-90 transition-opacity disabled:opacity-60"
+      >
+        {saving && <Loader2 size={13} className="animate-spin" />}
+        {saving ? "Saving…" : "Save hospital profile"}
       </button>
     </div>
   );
