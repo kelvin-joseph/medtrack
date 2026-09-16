@@ -149,6 +149,9 @@ export default function AICommandChat({ equipment, contextEquipment }) {
           <Send size={16} />
         </button>
       </form>
+      <p className="text-[10px] text-faint text-center px-4 pb-2.5 -mt-1 shrink-0">
+        AI-generated guidance — verify recommendations against equipment records and applicable clinical/technical procedures.
+      </p>
     </div>
   );
 }
