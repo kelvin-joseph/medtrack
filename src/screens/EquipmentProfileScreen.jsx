@@ -14,6 +14,9 @@ import RiskGauge from "../components/RiskGauge.jsx";
 import QRCode from "../components/QRCode.jsx";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
 import ScheduleMaintenanceDialog from "../components/ScheduleMaintenanceDialog.jsx";
+import LoadingState from "../components/LoadingState.jsx";
+import ErrorState from "../components/ErrorState.jsx";
+import EmptyState from "../components/EmptyState.jsx";
 import {
   RiskBadge, StatusBadge, ConditionBadge, PriorityBadge, CriticalityBadge,
 } from "../components/Badges.jsx";
@@ -794,20 +797,12 @@ function DocumentsTab({ eq }) {
         </div>
       )}
 
-      {loadingDocs && (
-        <div className="flex items-center gap-2 text-sm text-muted py-4 justify-center">
-          <Loader2 size={14} className="animate-spin" /> Loading documents…
-        </div>
-      )}
+      {loadingDocs && <LoadingState label="Loading documents…" />}
 
-      {!loadingDocs && listError && (
-        <div className="text-xs text-[#D9364B] bg-[#D9364B0D] border border-[#D9364B4D] rounded-lg px-3 py-2 mb-3">
-          {listError}
-        </div>
-      )}
+      {!loadingDocs && listError && <ErrorState message={listError} />}
 
       {!loadingDocs && !listError && documents.length === 0 && legacyDocs.length === 0 && (
-        <div className="text-sm text-muted py-4 text-center">No documents uploaded yet.</div>
+        <EmptyState icon={FileText} title="No documents uploaded yet." />
       )}
 
       {!loadingDocs && documents.length > 0 && (

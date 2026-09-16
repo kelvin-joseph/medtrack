@@ -4,6 +4,7 @@ import { useData } from "../context/AppDataContext.jsx";
 import { useRole } from "../context/RoleContext.jsx";
 import { ROLES, PERMISSIONS } from "../data/roles.js";
 import { fmtDate } from "../lib/dates.js";
+import ErrorState from "../components/ErrorState.jsx";
 
 // Mirrors admin-create-user's ADMIN_ROLES — who's allowed to invite
 // colleagues. The Edge Function is the real enforcement boundary (it
@@ -120,10 +121,7 @@ export default function UsersScreen() {
       </div>
 
       {usersError && (
-        <div className="rounded-xl border border-[#D9364B4D] bg-[#D9364B0D] px-4 py-3 flex items-center justify-between gap-3">
-          <span className="text-sm text-[#D9364B]">Couldn't load users: {usersError}</span>
-          <button onClick={refreshUsers} className="text-xs font-semibold text-[#D9364B] shrink-0">Retry</button>
-        </div>
+        <ErrorState message={`Couldn't load users: ${usersError}`} onRetry={refreshUsers} />
       )}
 
       {/* Role overview stat cards */}

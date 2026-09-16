@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { useApp } from "../context/AppContext.jsx";
-import { Plus, ChevronRight } from "lucide-react";
+import { Plus, ChevronRight, AlertTriangle } from "lucide-react";
 import { useData } from "../context/AppDataContext.jsx";
 import { useRole } from "../context/RoleContext.jsx";
 import { FAULT_CATEGORIES, TICKET_STATUSES } from "../data/faultTickets.js";
 import { TicketStatusBadge, PriorityBadge } from "../components/Badges.jsx";
 import { fmtDate } from "../lib/dates.js";
+import EmptyState from "../components/EmptyState.jsx";
 
 // Emergency/Critical auto-classification: critical-criticality equipment
 // reporting a Malfunction or Electrical Fault is escalated automatically.
@@ -200,9 +201,7 @@ export default function FaultReporting() {
           );
         })}
         {tickets.length === 0 && (
-          <div className="text-sm text-muted text-center py-8">
-            No fault reports yet.
-          </div>
+          <EmptyState icon={AlertTriangle} title="No fault reports yet." />
         )}
       </div>
     </div>
