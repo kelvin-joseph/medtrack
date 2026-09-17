@@ -105,111 +105,129 @@ export default function Dashboard() {
         <p className="text-sm text-muted mt-1">Real-time status across all tracked biomedical equipment.</p>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard icon={ClipboardList} label="Total Equipment" value={total} accent="#2F7DE1" />
-        <StatCard icon={CheckCircle2} label="Operational" value={operational} accent="#1F9D6B" />
-        <StatCard icon={Wrench} label="Under Maintenance" value={underMaintenance} accent="#D89A1F" />
-        <StatCard icon={XCircle} label="Out of Service" value={outOfService} accent="#D9364B" />
-        <StatCard icon={Clock} label="Maintenance Due" value={maintenanceDue} accent="#2F7DE1" sub="next 7 days" />
-        <StatCard icon={AlertOctagon} label="Overdue Maintenance" value={overdueMaintenance} accent="#E07A2F" />
-        <StatCard icon={ShieldAlert} label="High-Risk Equipment" value={highRisk} accent="#D9364B" />
-        <StatCard icon={Cpu} label="High Failure Probability" value={highFailureProb} accent="#D9364B" sub="p90 ≥ 60%" />
-      </div>
+      {/* 1. Equipment Requiring Attention — the actionable/urgent metrics, surfaced first */}
+      <section className="flex flex-col gap-3">
+        <h2 className="text-base font-semibold text-ink font-display">Equipment Requiring Attention</h2>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <StatCard icon={AlertOctagon} label="Overdue Maintenance" value={overdueMaintenance} accent="#E07A2F" />
+          <StatCard icon={ShieldAlert} label="High-Risk Equipment" value={highRisk} accent="#D9364B" />
+          <StatCard icon={Cpu} label="High Failure Probability" value={highFailureProb} accent="#D9364B" sub="p90 ≥ 60%" />
+          <StatCard icon={XCircle} label="Out of Service" value={outOfService} accent="#D9364B" />
+          <StatCard icon={Clock} label="Maintenance Due" value={maintenanceDue} accent="#2F7DE1" sub="next 7 days" />
+        </div>
+      </section>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      {/* 2. Critical Alerts — the most actionable content on the page, no longer buried at the bottom */}
+      <section className="flex flex-col gap-3">
+        <h2 className="text-base font-semibold text-ink font-display">Critical Alerts</h2>
         <div className="rounded-xl border border-border bg-surface p-5 shadow-card">
-          <h3 className="text-sm font-semibold text-ink mb-3">Equipment Health Overview</h3>
+          {alerts.length === 0 && <div className="text-sm text-muted text-center py-4">No active alerts.</div>}
           <div className="flex flex-col gap-2">
-            {conditionDist.map((c) => (
-              <div key={c.name} className="flex items-center gap-3">
-                <span className="text-xs text-muted w-16 shrink-0">{c.name}</span>
-                <div className="flex-1 h-2 rounded-full bg-accent-soft overflow-hidden">
-                  <div className="h-full rounded-full" style={{ width: `${(c.value / total) * 100}%`, backgroundColor: c.color }} />
-                </div>
-                <span className="text-xs font-mono text-ink w-5 text-right">{c.value}</span>
-              </div>
+            {alerts.map((a) => (
+              <button
+                key={a.id}
+                onClick={() => openEquipment(a.equipment.id)}
+                className="flex items-center gap-3 rounded-lg border border-border hover:border-accent/50 hover:bg-accent-soft px-3 py-2.5 text-left transition-colors"
+              >
+                {a.severity === "critical" ? (
+                  <AlertTriangle size={15} color="#D9364B" className="shrink-0" />
+                ) : (
+                  <Info size={15} color="#93A9C0" className="shrink-0" />
+                )}
+                <span className="text-sm text-ink">{a.message}</span>
+              </button>
             ))}
           </div>
         </div>
+      </section>
 
-        <div className="rounded-xl border border-border bg-surface p-5 shadow-card">
-          <h3 className="text-sm font-semibold text-ink mb-3">AI Risk Overview</h3>
-          <div className="flex flex-col gap-2">
-            {riskDist.map((r) => (
-              <div key={r.name} className="flex items-center gap-3">
-                <span className="text-xs text-muted w-16 shrink-0">{r.name}</span>
-                <div className="flex-1 h-2 rounded-full bg-accent-soft overflow-hidden">
-                  <div className="h-full rounded-full" style={{ width: `${(r.value / total) * 100}%`, backgroundColor: r.color }} />
+      {/* 3. Fleet Overview — routine, descriptive counts and distribution summaries */}
+      <section className="flex flex-col gap-3">
+        <h2 className="text-base font-semibold text-ink font-display">Fleet Overview</h2>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <StatCard icon={ClipboardList} label="Total Equipment" value={total} accent="#2F7DE1" />
+          <StatCard icon={CheckCircle2} label="Operational" value={operational} accent="#1F9D6B" />
+          <StatCard icon={Wrench} label="Under Maintenance" value={underMaintenance} accent="#D89A1F" />
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="rounded-xl border border-border bg-surface p-5 shadow-card">
+            <h3 className="text-sm font-semibold text-ink mb-3">Equipment Health Overview</h3>
+            <div className="flex flex-col gap-2">
+              {conditionDist.map((c) => (
+                <div key={c.name} className="flex items-center gap-3">
+                  <span className="text-xs text-muted w-16 shrink-0">{c.name}</span>
+                  <div className="flex-1 h-2 rounded-full bg-accent-soft overflow-hidden">
+                    <div className="h-full rounded-full" style={{ width: `${(c.value / total) * 100}%`, backgroundColor: c.color }} />
+                  </div>
+                  <span className="text-xs font-mono text-ink w-5 text-right">{c.value}</span>
                 </div>
-                <span className="text-xs font-mono text-ink w-5 text-right">{r.value}</span>
-              </div>
-            ))}
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-border bg-surface p-5 shadow-card">
+            <h3 className="text-sm font-semibold text-ink mb-3">AI Risk Overview</h3>
+            <div className="flex flex-col gap-2">
+              {riskDist.map((r) => (
+                <div key={r.name} className="flex items-center gap-3">
+                  <span className="text-xs text-muted w-16 shrink-0">{r.name}</span>
+                  <div className="flex-1 h-2 rounded-full bg-accent-soft overflow-hidden">
+                    <div className="h-full rounded-full" style={{ width: `${(r.value / total) * 100}%`, backgroundColor: r.color }} />
+                  </div>
+                  <span className="text-xs font-mono text-ink w-5 text-right">{r.value}</span>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
-      </div>
+      </section>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <ChartCard title="Equipment by Department">
-          <BarChart data={byDept}>
-            <CartesianGrid stroke="#E5EEF7" vertical={false} />
-            <XAxis dataKey="department" stroke="#5B7591" fontSize={9} tickLine={false} axisLine={false} interval={0} angle={-25} textAnchor="end" height={45} />
-            <YAxis stroke="#5B7591" fontSize={11} tickLine={false} axisLine={false} allowDecimals={false} />
-            <Tooltip contentStyle={tooltipStyle} />
-            <Bar dataKey="count" fill="#2F7DE1" radius={[4, 4, 0, 0]} />
-          </BarChart>
-        </ChartCard>
+      {/* 4. Analytics — exploratory trend charts */}
+      <section className="flex flex-col gap-3">
+        <h2 className="text-base font-semibold text-ink font-display">Analytics</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <ChartCard title="Equipment by Department">
+            <BarChart data={byDept}>
+              <CartesianGrid stroke="#E5EEF7" vertical={false} />
+              <XAxis dataKey="department" stroke="#5B7591" fontSize={9} tickLine={false} axisLine={false} interval={0} angle={-25} textAnchor="end" height={45} />
+              <YAxis stroke="#5B7591" fontSize={11} tickLine={false} axisLine={false} allowDecimals={false} />
+              <Tooltip contentStyle={tooltipStyle} />
+              <Bar dataKey="count" fill="#2F7DE1" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ChartCard>
 
-        <ChartCard title="Equipment Failure Trends">
-          <LineChart data={failureTrend}>
-            <CartesianGrid stroke="#E5EEF7" vertical={false} />
-            <XAxis dataKey="month" stroke="#5B7591" fontSize={10} tickLine={false} axisLine={false} />
-            <YAxis stroke="#5B7591" fontSize={11} tickLine={false} axisLine={false} allowDecimals={false} />
-            <Tooltip contentStyle={tooltipStyle} />
-            <Line type="monotone" dataKey="failures" stroke="#D9364B" strokeWidth={2} dot={{ r: 3, fill: "#D9364B" }} />
-          </LineChart>
-        </ChartCard>
+          <ChartCard title="Equipment Failure Trends">
+            <LineChart data={failureTrend}>
+              <CartesianGrid stroke="#E5EEF7" vertical={false} />
+              <XAxis dataKey="month" stroke="#5B7591" fontSize={10} tickLine={false} axisLine={false} />
+              <YAxis stroke="#5B7591" fontSize={11} tickLine={false} axisLine={false} allowDecimals={false} />
+              <Tooltip contentStyle={tooltipStyle} />
+              <Line type="monotone" dataKey="failures" stroke="#D9364B" strokeWidth={2} dot={{ r: 3, fill: "#D9364B" }} />
+            </LineChart>
+          </ChartCard>
 
-        <ChartCard title="Equipment Downtime (hrs/month)">
-          <BarChart data={downtimeByMonth}>
-            <CartesianGrid stroke="#E5EEF7" vertical={false} />
-            <XAxis dataKey="month" stroke="#5B7591" fontSize={10} tickLine={false} axisLine={false} />
-            <YAxis stroke="#5B7591" fontSize={11} tickLine={false} axisLine={false} />
-            <Tooltip contentStyle={tooltipStyle} />
-            <Bar dataKey="hours" fill="#E07A2F" radius={[4, 4, 0, 0]} />
-          </BarChart>
-        </ChartCard>
+          <ChartCard title="Equipment Downtime (hrs/month)">
+            <BarChart data={downtimeByMonth}>
+              <CartesianGrid stroke="#E5EEF7" vertical={false} />
+              <XAxis dataKey="month" stroke="#5B7591" fontSize={10} tickLine={false} axisLine={false} />
+              <YAxis stroke="#5B7591" fontSize={11} tickLine={false} axisLine={false} />
+              <Tooltip contentStyle={tooltipStyle} />
+              <Bar dataKey="hours" fill="#E07A2F" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ChartCard>
 
-        <ChartCard title="Maintenance Costs (₦/month)">
-          <LineChart data={costByMonth}>
-            <CartesianGrid stroke="#E5EEF7" vertical={false} />
-            <XAxis dataKey="month" stroke="#5B7591" fontSize={10} tickLine={false} axisLine={false} />
-            <YAxis stroke="#5B7591" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(v) => `${Math.round(v / 1000)}k`} />
-            <Tooltip contentStyle={tooltipStyle} formatter={(v) => `₦${v.toLocaleString()}`} />
-            <Line type="monotone" dataKey="cost" stroke="#2F7DE1" strokeWidth={2} dot={{ r: 3, fill: "#2F7DE1" }} />
-          </LineChart>
-        </ChartCard>
-      </div>
-
-      <div className="rounded-xl border border-border bg-surface p-5 shadow-card">
-        <h3 className="text-sm font-semibold text-ink mb-3">Critical Alerts</h3>
-        {alerts.length === 0 && <div className="text-sm text-muted text-center py-4">No active alerts.</div>}
-        <div className="flex flex-col gap-2">
-          {alerts.map((a) => (
-            <button
-              key={a.id}
-              onClick={() => openEquipment(a.equipment.id)}
-              className="flex items-center gap-3 rounded-lg border border-border hover:border-accent/50 hover:bg-accent-soft px-3 py-2.5 text-left transition-colors"
-            >
-              {a.severity === "critical" ? (
-                <AlertTriangle size={15} color="#D9364B" className="shrink-0" />
-              ) : (
-                <Info size={15} color="#93A9C0" className="shrink-0" />
-              )}
-              <span className="text-sm text-ink">{a.message}</span>
-            </button>
-          ))}
+          <ChartCard title="Maintenance Costs (₦/month)">
+            <LineChart data={costByMonth}>
+              <CartesianGrid stroke="#E5EEF7" vertical={false} />
+              <XAxis dataKey="month" stroke="#5B7591" fontSize={10} tickLine={false} axisLine={false} />
+              <YAxis stroke="#5B7591" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(v) => `${Math.round(v / 1000)}k`} />
+              <Tooltip contentStyle={tooltipStyle} formatter={(v) => `₦${v.toLocaleString()}`} />
+              <Line type="monotone" dataKey="cost" stroke="#2F7DE1" strokeWidth={2} dot={{ r: 3, fill: "#2F7DE1" }} />
+            </LineChart>
+          </ChartCard>
         </div>
-      </div>
+      </section>
     </div>
   );
 }
