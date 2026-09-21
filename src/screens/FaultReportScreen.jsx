@@ -25,7 +25,7 @@ function classifyPriority(equipment, category) {
 
 export default function FaultReporting() {
   const { openEquipment } = useApp();
-  const { equipment, tickets, workOrders, addTicket, updateTicketStatus, addWorkOrder } =
+  const { equipment, tickets, workOrders, users, addTicket, updateTicketStatus, addWorkOrder } =
     useData();
   const { can, role, profile } = useRole();
   const getEquipmentById = (id) => equipment.find((e) => e.id === id);
@@ -40,12 +40,31 @@ export default function FaultReporting() {
 
   const [submitError, setSubmitError] = useState(null);
 
+  // Same rule as ScheduleMaintenanceDialog: assignable engineers are any
+  // user whose role contains "Biomedical" (covers both Biomedical Engineer
+  // and Head of Biomedical Engineering).
+  const engineers = [...new Set(users.filter((u) => u.role.includes("Biomedical")).map((u) => u.name))];
+
   // Work-order-from-ticket creation state, keyed by ticket id.
+  const [selectingWoId, setSelectingWoId] = useState(null);
+  const [selectedEngineer, setSelectedEngineer] = useState({});
   const [creatingWoId, setCreatingWoId] = useState(null);
   const [woErrors, setWoErrors] = useState({});
 
+  function startSelectingEngineer(t, eq) {
+    setSelectingWoId(t.id);
+    setSelectedEngineer((prev) => ({ ...prev, [t.id]: eq?.assignedEngineer || "" }));
+    setWoErrors((prev) => ({ ...prev, [t.id]: null }));
+  }
+
+  function cancelSelectingEngineer(id) {
+    setSelectingWoId((cur) => (cur === id ? null : cur));
+  }
+
   async function handleCreateWorkOrder(t, eq, priority) {
     if (creatingWoId) return; // guard against duplicate/concurrent submission
+    const engineer = selectedEngineer[t.id];
+    if (!engineer) return; // an engineer must be selected before creating
     setCreatingWoId(t.id);
     setWoErrors((prev) => ({ ...prev, [t.id]: null }));
     try {
@@ -56,10 +75,12 @@ export default function FaultReporting() {
         title: `Fault repair — ${eq?.name || t.equipmentId}`,
         description: t.description,
         priority,
+        assignedEngineer: engineer,
         createdBy: profile?.name || role,
       });
       // addWorkOrder() already refreshes tickets/work-order data and shows
       // a success toast — nothing further to do here.
+      setSelectingWoId((cur) => (cur === t.id ? null : cur));
     } catch (err) {
       console.error("[FaultReport] Failed to create work order:", err);
       setWoErrors((prev) => ({
@@ -237,13 +258,56 @@ export default function FaultReporting() {
                       </option>
                     ))}
                   </select>
-                  {canCreateWorkOrder && (
+                  {canCreateWorkOrder && selectingWoId === t.id && (
+                    <div className="flex flex-col gap-1.5 items-end w-full max-w-[220px]">
+                      {engineers.length === 0 ? (
+                        <div className="text-[11px] text-[#D9364B] bg-[#D9364B0D] border border-[#D9364B4D] rounded-lg px-2 py-1.5 text-right">
+                          No biomedical engineers available. Add one before creating a work order.
+                        </div>
+                      ) : (
+                        <select
+                          value={selectedEngineer[t.id] ?? ""}
+                          onChange={(e) =>
+                            setSelectedEngineer((prev) => ({ ...prev, [t.id]: e.target.value }))
+                          }
+                          className="text-xs border border-border rounded-lg px-2 py-1.5 outline-none w-full"
+                        >
+                          <option value="">Select engineer…</option>
+                          {engineers.map((e) => (
+                            <option key={e} value={e}>
+                              {e}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                      <div className="flex gap-1.5">
+                        <button
+                          onClick={() => handleCreateWorkOrder(t, eq, priority)}
+                          disabled={
+                            creatingWoId === t.id ||
+                            engineers.length === 0 ||
+                            !selectedEngineer[t.id]
+                          }
+                          className="text-xs font-semibold rounded-lg bg-accent text-white px-3 py-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {creatingWoId === t.id ? "Creating…" : "Confirm"}
+                        </button>
+                        <button
+                          onClick={() => cancelSelectingEngineer(t.id)}
+                          disabled={creatingWoId === t.id}
+                          className="text-xs font-semibold rounded-lg border border-border px-3 py-1.5 text-muted disabled:opacity-50"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {canCreateWorkOrder && selectingWoId !== t.id && (
                     <button
-                      onClick={() => handleCreateWorkOrder(t, eq, priority)}
-                      disabled={creatingWoId === t.id}
-                      className="text-xs font-semibold rounded-lg border border-border px-3 py-1.5 text-ink hover:border-accent hover:text-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      onClick={() => startSelectingEngineer(t, eq)}
+                      className="text-xs font-semibold rounded-lg border border-border px-3 py-1.5 text-ink hover:border-accent hover:text-accent transition-colors"
                     >
-                      {creatingWoId === t.id ? "Creating…" : "Create Work Order"}
+                      Create Work Order
                     </button>
                   )}
                   {woErrors[t.id] && (
