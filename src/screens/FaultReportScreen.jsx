@@ -25,7 +25,8 @@ function classifyPriority(equipment, category) {
 
 export default function FaultReporting() {
   const { openEquipment } = useApp();
-  const { equipment, tickets, addTicket, updateTicketStatus } = useData();
+  const { equipment, tickets, workOrders, addTicket, updateTicketStatus, addWorkOrder } =
+    useData();
   const { can, role, profile } = useRole();
   const getEquipmentById = (id) => equipment.find((e) => e.id === id);
   const [showForm, setShowForm] = useState(false);
@@ -38,6 +39,37 @@ export default function FaultReporting() {
   });
 
   const [submitError, setSubmitError] = useState(null);
+
+  // Work-order-from-ticket creation state, keyed by ticket id.
+  const [creatingWoId, setCreatingWoId] = useState(null);
+  const [woErrors, setWoErrors] = useState({});
+
+  async function handleCreateWorkOrder(t, eq, priority) {
+    if (creatingWoId) return; // guard against duplicate/concurrent submission
+    setCreatingWoId(t.id);
+    setWoErrors((prev) => ({ ...prev, [t.id]: null }));
+    try {
+      await addWorkOrder({
+        equipmentId: t.equipmentId,
+        faultTicketId: t.id,
+        type: "Corrective",
+        title: `Fault repair — ${eq?.name || t.equipmentId}`,
+        description: t.description,
+        priority,
+        createdBy: profile?.name || role,
+      });
+      // addWorkOrder() already refreshes tickets/work-order data and shows
+      // a success toast — nothing further to do here.
+    } catch (err) {
+      console.error("[FaultReport] Failed to create work order:", err);
+      setWoErrors((prev) => ({
+        ...prev,
+        [t.id]: err.message || "Failed to create work order. Please try again.",
+      }));
+    } finally {
+      setCreatingWoId(null);
+    }
+  }
 
   async function submit() {
     setSubmitError(null);
@@ -160,6 +192,12 @@ export default function FaultReporting() {
         {tickets.map((t) => {
           const eq = getEquipmentById(t.equipmentId);
           const priority = classifyPriority(eq, t.category);
+          // Sourced from workOrders (loaded from the work_orders table via
+          // workOrderService), not a local/derived guess — reflects the
+          // actual fault_ticket_id linkage in the database.
+          const hasWorkOrder = workOrders.some((w) => w.faultTicketId === t.id);
+          const canCreateWorkOrder =
+            t.status !== "Completed" && t.status !== "Closed" && !hasWorkOrder;
           return (
             <div
               key={t.id}
@@ -186,17 +224,33 @@ export default function FaultReporting() {
                   {fmtDate(t.createdAt)}
                 </div>
               </div>
-              <select
-                value={t.status}
-                onChange={(e) => updateTicketStatus(t.id, e.target.value)}
-                className="text-xs border border-border rounded-lg px-2 py-1.5 outline-none shrink-0"
-              >
-                {TICKET_STATUSES.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
-              </select>
+              <div className="flex flex-col items-end gap-2 shrink-0">
+                <select
+                  value={t.status}
+                  onChange={(e) => updateTicketStatus(t.id, e.target.value)}
+                  className="text-xs border border-border rounded-lg px-2 py-1.5 outline-none shrink-0"
+                >
+                  {TICKET_STATUSES.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
+                {canCreateWorkOrder && (
+                  <button
+                    onClick={() => handleCreateWorkOrder(t, eq, priority)}
+                    disabled={creatingWoId === t.id}
+                    className="text-xs font-semibold rounded-lg border border-border px-3 py-1.5 text-ink hover:border-accent hover:text-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {creatingWoId === t.id ? "Creating…" : "Create Work Order"}
+                  </button>
+                )}
+                {woErrors[t.id] && (
+                  <div className="text-[11px] text-[#D9364B] bg-[#D9364B0D] border border-[#D9364B4D] rounded-lg px-2 py-1 max-w-[220px] text-right">
+                    {woErrors[t.id]}
+                  </div>
+                )}
+              </div>
             </div>
           );
         })}
