@@ -188,76 +188,78 @@ export default function FaultReporting() {
         </div>
       )}
 
-      <div className="flex flex-col gap-3">
-        {tickets.map((t) => {
-          const eq = getEquipmentById(t.equipmentId);
-          const priority = classifyPriority(eq, t.category);
-          // Sourced from workOrders (loaded from the work_orders table via
-          // workOrderService), not a local/derived guess — reflects the
-          // actual fault_ticket_id linkage in the database.
-          const hasWorkOrder = workOrders.some((w) => w.faultTicketId === t.id);
-          const canCreateWorkOrder =
-            t.status !== "Completed" && t.status !== "Closed" && !hasWorkOrder;
-          return (
-            <div
-              key={t.id}
-              className="rounded-xl border border-border bg-surface p-4 shadow-card flex items-start justify-between gap-4 flex-wrap"
-            >
-              <div className="flex-1 min-w-[240px]">
-                <div className="flex items-center gap-2 mb-1 flex-wrap">
-                  <span className="text-xs font-mono text-muted">{t.id}</span>
-                  <TicketStatusBadge status={t.status} />
-                  <PriorityBadge priority={priority} />
-                </div>
-                <button
-                  onClick={() => eq && openEquipment(eq.id)}
-                  className="text-sm font-medium text-ink hover:text-accent transition-colors flex items-center gap-1"
-                >
-                  {eq ? eq.name : "Unknown equipment"}{" "}
-                  <ChevronRight size={12} />
-                </button>
-                <div className="text-xs text-muted mt-1">
-                  {t.category} · reported by {t.reportedBy} · {t.department}
-                </div>
-                <div className="text-sm text-ink mt-2">{t.description}</div>
-                <div className="text-[11px] text-faint mt-2">
-                  {fmtDate(t.createdAt)}
-                </div>
-              </div>
-              <div className="flex flex-col items-end gap-2 shrink-0">
-                <select
-                  value={t.status}
-                  onChange={(e) => updateTicketStatus(t.id, e.target.value)}
-                  className="text-xs border border-border rounded-lg px-2 py-1.5 outline-none shrink-0"
-                >
-                  {TICKET_STATUSES.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
-                {canCreateWorkOrder && (
-                  <button
-                    onClick={() => handleCreateWorkOrder(t, eq, priority)}
-                    disabled={creatingWoId === t.id}
-                    className="text-xs font-semibold rounded-lg border border-border px-3 py-1.5 text-ink hover:border-accent hover:text-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {creatingWoId === t.id ? "Creating…" : "Create Work Order"}
-                  </button>
-                )}
-                {woErrors[t.id] && (
-                  <div className="text-[11px] text-[#D9364B] bg-[#D9364B0D] border border-[#D9364B4D] rounded-lg px-2 py-1 max-w-[220px] text-right">
-                    {woErrors[t.id]}
+      {can("manageWorkOrders") && (
+        <div className="flex flex-col gap-3">
+          {tickets.map((t) => {
+            const eq = getEquipmentById(t.equipmentId);
+            const priority = classifyPriority(eq, t.category);
+            // Sourced from workOrders (loaded from the work_orders table via
+            // workOrderService), not a local/derived guess — reflects the
+            // actual fault_ticket_id linkage in the database.
+            const hasWorkOrder = workOrders.some((w) => w.faultTicketId === t.id);
+            const canCreateWorkOrder =
+              t.status !== "Completed" && t.status !== "Closed" && !hasWorkOrder;
+            return (
+              <div
+                key={t.id}
+                className="rounded-xl border border-border bg-surface p-4 shadow-card flex items-start justify-between gap-4 flex-wrap"
+              >
+                <div className="flex-1 min-w-[240px]">
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
+                    <span className="text-xs font-mono text-muted">{t.id}</span>
+                    <TicketStatusBadge status={t.status} />
+                    <PriorityBadge priority={priority} />
                   </div>
-                )}
+                  <button
+                    onClick={() => eq && openEquipment(eq.id)}
+                    className="text-sm font-medium text-ink hover:text-accent transition-colors flex items-center gap-1"
+                  >
+                    {eq ? eq.name : "Unknown equipment"}{" "}
+                    <ChevronRight size={12} />
+                  </button>
+                  <div className="text-xs text-muted mt-1">
+                    {t.category} · reported by {t.reportedBy} · {t.department}
+                  </div>
+                  <div className="text-sm text-ink mt-2">{t.description}</div>
+                  <div className="text-[11px] text-faint mt-2">
+                    {fmtDate(t.createdAt)}
+                  </div>
+                </div>
+                <div className="flex flex-col items-end gap-2 shrink-0">
+                  <select
+                    value={t.status}
+                    onChange={(e) => updateTicketStatus(t.id, e.target.value)}
+                    className="text-xs border border-border rounded-lg px-2 py-1.5 outline-none shrink-0"
+                  >
+                    {TICKET_STATUSES.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
+                  {canCreateWorkOrder && (
+                    <button
+                      onClick={() => handleCreateWorkOrder(t, eq, priority)}
+                      disabled={creatingWoId === t.id}
+                      className="text-xs font-semibold rounded-lg border border-border px-3 py-1.5 text-ink hover:border-accent hover:text-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {creatingWoId === t.id ? "Creating…" : "Create Work Order"}
+                    </button>
+                  )}
+                  {woErrors[t.id] && (
+                    <div className="text-[11px] text-[#D9364B] bg-[#D9364B0D] border border-[#D9364B4D] rounded-lg px-2 py-1 max-w-[220px] text-right">
+                      {woErrors[t.id]}
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-          );
-        })}
-        {tickets.length === 0 && (
-          <EmptyState icon={AlertTriangle} title="No fault reports yet." />
-        )}
-      </div>
+            );
+          })}
+          {tickets.length === 0 && (
+            <EmptyState icon={AlertTriangle} title="No fault reports yet." />
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -17,6 +17,7 @@ export const PERMISSIONS = {
     scanQR: true, viewAIRisk: true, updateCondition: true,
     approveReports: false, assignTasks: false, viewCosts: true,
     viewReplacementRecs: true, reportFault: true, manageUsers: false,
+    manageWorkOrders: true,
   },
   "Head of Biomedical Engineering": {
     registerEquipment: true, editEquipment: true, performMaintenance: true,
@@ -24,6 +25,7 @@ export const PERMISSIONS = {
     scanQR: true, viewAIRisk: true, updateCondition: true,
     approveReports: true, assignTasks: true, viewCosts: true,
     viewReplacementRecs: true, reportFault: true, manageUsers: false,
+    manageWorkOrders: true,
   },
   "Hospital Administrator": {
     registerEquipment: false, editEquipment: false, performMaintenance: false,
@@ -31,6 +33,7 @@ export const PERMISSIONS = {
     scanQR: false, viewAIRisk: true, updateCondition: false,
     approveReports: false, assignTasks: false, viewCosts: true,
     viewReplacementRecs: true, reportFault: false, manageUsers: false,
+    manageWorkOrders: false,
   },
   "Department Staff": {
     registerEquipment: false, editEquipment: false, performMaintenance: false,
@@ -38,6 +41,7 @@ export const PERMISSIONS = {
     scanQR: true, viewAIRisk: false, updateCondition: false,
     approveReports: false, assignTasks: false, viewCosts: false,
     viewReplacementRecs: false, reportFault: true, manageUsers: false,
+    manageWorkOrders: false,
   },
   "System Administrator": {
     registerEquipment: true, editEquipment: true, performMaintenance: true,
@@ -45,6 +49,7 @@ export const PERMISSIONS = {
     scanQR: true, viewAIRisk: true, updateCondition: true,
     approveReports: true, assignTasks: true, viewCosts: true,
     viewReplacementRecs: true, reportFault: true, manageUsers: true,
+    manageWorkOrders: true,
   },
   // Read-only. Every write flag is false on purpose — this is UI-level
   // hiding of write actions (buttons don't render), NOT the real security
@@ -57,6 +62,7 @@ export const PERMISSIONS = {
     scanQR: false, viewAIRisk: true, updateCondition: false,
     approveReports: false, assignTasks: false, viewCosts: true,
     viewReplacementRecs: true, reportFault: false, manageUsers: false,
+    manageWorkOrders: false,
   },
 };
 
