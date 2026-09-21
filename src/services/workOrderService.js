@@ -26,6 +26,7 @@ function fromDb(row) {
     notes: row.notes,
     createdBy: row.created_by,
     createdAt: row.created_at,
+    faultTicketId: row.fault_ticket_id,
   };
 }
 
@@ -45,6 +46,7 @@ function toDb(wo) {
   if ("checklist" in wo) row.checklist = wo.checklist;
   if ("notes" in wo) row.notes = wo.notes;
   if ("createdBy" in wo) row.created_by = wo.createdBy;
+  if ("faultTicketId" in wo) row.fault_ticket_id = wo.faultTicketId;
   return row;
 }
 
