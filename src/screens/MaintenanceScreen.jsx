@@ -12,7 +12,13 @@ import { equipmentNeedingScheduling, WORK_ORDER_STATUSES, MAINTENANCE_TYPES, PRI
 import EmptyState from "../components/EmptyState.jsx";
 import ScheduleMaintenanceDialog from "../components/ScheduleMaintenanceDialog.jsx";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
+import CompleteWorkOrderDialog from "../components/CompleteWorkOrderDialog.jsx";
 import { PriorityBadge } from "../components/Badges.jsx";
+
+// Mirrors AppDataContext.jsx's CORRECTIVE_TYPES — work orders of these types
+// go through the Repair Record dialog on completion instead of completing
+// immediately.
+const CORRECTIVE_TYPES = new Set(["Corrective", "Emergency Repair"]);
 
 const TABS = [
   { key: "upcoming", label: "Upcoming", icon: Wrench },
@@ -316,12 +322,50 @@ function AgendaList({ days, ordersOn, eqById, openEquipment }) {
 
 /* ---------------------------------- Work Orders ---------------------------------- */
 function WorkOrdersTab({ workOrders, equipment }) {
-  const { completeWorkOrder, cancelWorkOrder, removeWorkOrder } = useData();
+  const { tickets, completeWorkOrder, completeWorkOrderWithRepair, cancelWorkOrder, removeWorkOrder } = useData();
   const [statusFilter, setStatusFilter] = useState("All");
   const [typeFilter, setTypeFilter] = useState("All");
   const [confirmDelete, setConfirmDelete] = useState(null);
 
+  // Repair Record completion dialog state, for Corrective/Emergency Repair
+  // work orders only. `completingWo` holds the work order being completed;
+  // non-corrective work orders never touch this and keep completing
+  // immediately via completeWorkOrder(id).
+  const [completingWo, setCompletingWo] = useState(null);
+  const [completing, setCompleting] = useState(false);
+  const [completeError, setCompleteError] = useState(null);
+
   const eqById = Object.fromEntries(equipment.map((e) => [e.id, e]));
+
+  function handleCompleteClick(w) {
+    if (CORRECTIVE_TYPES.has(w.type)) {
+      setCompleteError(null);
+      setCompletingWo(w);
+    } else {
+      completeWorkOrder(w.id);
+    }
+  }
+
+  function closeCompleteDialog() {
+    if (completing) return; // don't allow closing mid-submit
+    setCompletingWo(null);
+    setCompleteError(null);
+  }
+
+  async function handleRepairSubmit(repairData) {
+    if (completing) return; // guard against duplicate/concurrent submission
+    setCompleting(true);
+    setCompleteError(null);
+    try {
+      await completeWorkOrderWithRepair(completingWo.id, repairData);
+      setCompletingWo(null);
+    } catch (err) {
+      console.error("[MaintenanceScreen] Failed to complete work order with repair record:", err);
+      setCompleteError(err.message || "Failed to save the repair record. The work order was not changed — please try again.");
+    } finally {
+      setCompleting(false);
+    }
+  }
   const filtered = workOrders.filter((w) =>
     (statusFilter === "All" || w.status === statusFilter) && (typeFilter === "All" || w.type === typeFilter)
   ).sort((a, b) => new Date(a.scheduledDate || 0) - new Date(b.scheduledDate || 0));
@@ -378,7 +422,7 @@ function WorkOrdersTab({ workOrders, equipment }) {
                   <td className="px-4 py-3 text-right">
                     {open && (
                       <div className="flex items-center justify-end gap-2">
-                        <button onClick={() => completeWorkOrder(w.id)} title="Mark completed" className="text-[#1F9D6B] hover:opacity-70"><Check size={15} /></button>
+                        <button onClick={() => handleCompleteClick(w)} title="Mark completed" className="text-[#1F9D6B] hover:opacity-70"><Check size={15} /></button>
                         <button onClick={() => cancelWorkOrder(w.id)} title="Cancel" className="text-faint hover:text-[#D9364B]"><XIcon size={15} /></button>
                       </div>
                     )}
@@ -397,6 +441,17 @@ function WorkOrdersTab({ workOrders, equipment }) {
         confirmLabel="Delete"
         onConfirm={() => { removeWorkOrder(confirmDelete); setConfirmDelete(null); }}
         onCancel={() => setConfirmDelete(null)}
+      />
+
+      <CompleteWorkOrderDialog
+        open={!!completingWo}
+        onClose={closeCompleteDialog}
+        workOrder={completingWo}
+        equipment={completingWo ? eqById[completingWo.equipmentId] : undefined}
+        ticket={completingWo ? tickets.find((t) => t.id === completingWo.faultTicketId) : undefined}
+        onSubmit={handleRepairSubmit}
+        submitting={completing}
+        submitError={completeError}
       />
     </div>
   );

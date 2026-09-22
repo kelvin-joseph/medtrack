@@ -13,6 +13,7 @@ import * as userService from "../services/userService.js";
 import * as settingsService from "../services/settingsService.js";
 import * as auditService from "../services/auditService.js";
 import * as workOrderService from "../services/workOrderService.js";
+import * as repairRecordService from "../services/repairRecordService.js";
 import {
   readValue,
   writeValue,
@@ -51,6 +52,7 @@ export function AppDataProvider({ children }) {
   const [dataMode, setDataMode] = useState("empty"); // "empty" | "demo"
   const [equipment, setEquipment] = useState([]);
   const [workOrders, setWorkOrders] = useState([]);
+  const [repairRecords, setRepairRecords] = useState([]);
   const [tickets, setTickets] = useState([]);
   const [users, setUsers] = useState([]);
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
@@ -90,6 +92,7 @@ export function AppDataProvider({ children }) {
   const refreshFromServices = useCallback(async () => {
     setEquipment(await equipmentService.getAll());
     setWorkOrders(await workOrderService.getAll());
+    setRepairRecords(await repairRecordService.getAll());
     setTickets(await faultService.getAll());
     setSettings(await settingsService.get());
     setAuditLog(await auditService.getAll());
@@ -339,7 +342,11 @@ export function AppDataProvider({ children }) {
       const note =
         completion.note || `${wo.type} completed — ${wo.title || ""}`.trim();
 
-      if (CORRECTIVE_TYPES.has(wo.type)) {
+      // `repairAlreadyLogged` is set by completeWorkOrderWithRepair() once a
+      // real repair_records row has already been created for this work
+      // order — skips the legacy equipment.details.repairRecords JSON write
+      // below so the repair isn't logged twice in two different places.
+      if (CORRECTIVE_TYPES.has(wo.type) && !completion.repairAlreadyLogged) {
         await maintenanceService.addRepair(wo.equipmentId, {
           date: completedDate,
           reportedBy: wo.createdBy || "Biomedical Engineer",
@@ -395,6 +402,41 @@ export function AppDataProvider({ children }) {
       showToast("Maintenance completed and logged.");
     },
     [refreshFromServices, logAudit, showToast],
+  );
+
+  /**
+   * Completes a corrective/emergency-repair work order via a real
+   * repair_records row (from CompleteWorkOrderDialog) instead of the legacy
+   * equipment.details.repairRecords JSON entry.
+   *
+   * The repair record is created FIRST; the work order is only marked
+   * Completed if that succeeds. If repair record creation fails, this
+   * throws and the work order is left completely untouched — the caller
+   * (the dialog) is expected to catch this and show the error inline.
+   */
+  const completeWorkOrderWithRepair = useCallback(
+    async (id, repairData) => {
+      // Duplicate-prevention: check against the live table, not local
+      // state, in case a prior attempt for this work order already
+      // succeeded (e.g. the subsequent status update failed and the
+      // engineer retried).
+      const existing = await repairRecordService.getAll();
+      const alreadyExists = existing.some((r) => r.workOrderId === id);
+      if (!alreadyExists) {
+        await repairRecordService.create({ ...repairData, workOrderId: id });
+      }
+
+      // Only reached if the repair record already existed or was just
+      // created successfully. completeWorkOrder() still owns status,
+      // completedDate, and recurrence — repairAlreadyLogged just tells it
+      // to skip its own internal repair logging for this call.
+      await completeWorkOrder(id, {
+        cost: repairData.cost,
+        downtimeHours: repairData.downtimeHours,
+        repairAlreadyLogged: true,
+      });
+    },
+    [completeWorkOrder],
   );
 
   /* ---------------------------- fault ticket actions ---------------------------- */
@@ -509,6 +551,7 @@ export function AppDataProvider({ children }) {
         dataMode,
         equipment,
         workOrders,
+        repairRecords,
         tickets,
         users,
         usersLoading,
@@ -540,6 +583,7 @@ export function AppDataProvider({ children }) {
         cancelWorkOrder,
         removeWorkOrder,
         completeWorkOrder,
+        completeWorkOrderWithRepair,
         addTicket,
         updateTicketStatus,
         addUser,

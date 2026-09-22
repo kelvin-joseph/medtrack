@@ -19,8 +19,14 @@ const FINAL_STATUS_OPTIONS = ["Resolved", "Partially Resolved", "Recurring — m
  *  - ticket: the linked Fault Ticket, if any (read-only context)
  *  - equipment: the equipment record for the Work Order (for display name)
  *  - onSubmit: (repairData) => void — called with the collected form data
+ *  - submitting: optional boolean — disables the Save action and shows a
+ *    saving state while the caller's async submit is in flight
+ *  - submitError: optional string — shown as a banner when the caller's
+ *    submit failed, so the dialog can stay open with the entered data intact
  */
-export default function CompleteWorkOrderDialog({ open, onClose, workOrder, ticket, equipment, onSubmit }) {
+export default function CompleteWorkOrderDialog({
+  open, onClose, workOrder, ticket, equipment, onSubmit, submitting = false, submitError = null,
+}) {
   const [errorCode, setErrorCode] = useState("");
   const [suspectedCause, setSuspectedCause] = useState("");
   const [diagnosis, setDiagnosis] = useState("");
@@ -45,6 +51,7 @@ export default function CompleteWorkOrderDialog({ open, onClose, workOrder, tick
   }
 
   function submit() {
+    if (submitting) return; // guard against double submission
     if (!validate()) return;
     // repairStart is deliberately not included here — it is not collected
     // from the engineer in this form, and must not be derived from
@@ -109,6 +116,12 @@ export default function CompleteWorkOrderDialog({ open, onClose, workOrder, tick
             Repair record — to be completed by the engineer
           </div>
 
+          {submitError && (
+            <div className="text-xs text-[#D9364B] bg-[#D9364B0D] border border-[#D9364B4D] rounded-lg px-3 py-2 mb-3">
+              {submitError}
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-3">
             <FormField label="Error code" hint="Optional">
               <TextInput value={errorCode} onChange={(e) => setErrorCode(e.target.value)} placeholder="e.g. E-104" />
@@ -158,11 +171,16 @@ export default function CompleteWorkOrderDialog({ open, onClose, workOrder, tick
         <div className="flex gap-2 mt-1">
           <button
             onClick={submit}
-            className="flex-1 rounded-lg bg-accent text-white text-sm font-semibold px-4 py-2.5 hover:opacity-90 transition-opacity"
+            disabled={submitting}
+            className="flex-1 rounded-lg bg-accent text-white text-sm font-semibold px-4 py-2.5 hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Save repair record
+            {submitting ? "Saving…" : "Save repair record"}
           </button>
-          <button onClick={onClose} className="rounded-lg border border-border text-sm font-semibold px-4 py-2.5 text-muted">
+          <button
+            onClick={onClose}
+            disabled={submitting}
+            className="rounded-lg border border-border text-sm font-semibold px-4 py-2.5 text-muted disabled:opacity-50"
+          >
             Cancel
           </button>
         </div>
