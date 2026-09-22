@@ -416,6 +416,14 @@ export function AppDataProvider({ children }) {
    */
   const completeWorkOrderWithRepair = useCallback(
     async (id, repairData) => {
+      // The repair record's `date` column is NOT NULL and must be the
+      // actual work-order completion date — not scheduledDate, and not
+      // left for repairRecordService/the dialog to invent. Computed once
+      // here (same default-to-today rule completeWorkOrder itself uses)
+      // and shared with both calls below so they never disagree.
+      const completedDate =
+        repairData.completedDate || new Date().toISOString().slice(0, 10);
+
       // Duplicate-prevention: check against the live table, not local
       // state, in case a prior attempt for this work order already
       // succeeded (e.g. the subsequent status update failed and the
@@ -423,7 +431,7 @@ export function AppDataProvider({ children }) {
       const existing = await repairRecordService.getAll();
       const alreadyExists = existing.some((r) => r.workOrderId === id);
       if (!alreadyExists) {
-        await repairRecordService.create({ ...repairData, workOrderId: id });
+        await repairRecordService.create({ ...repairData, workOrderId: id, date: completedDate });
       }
 
       // Only reached if the repair record already existed or was just
@@ -431,6 +439,7 @@ export function AppDataProvider({ children }) {
       // completedDate, and recurrence — repairAlreadyLogged just tells it
       // to skip its own internal repair logging for this call.
       await completeWorkOrder(id, {
+        completedDate,
         cost: repairData.cost,
         downtimeHours: repairData.downtimeHours,
         repairAlreadyLogged: true,
