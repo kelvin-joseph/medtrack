@@ -14,12 +14,19 @@ import RiskGauge from "../components/RiskGauge.jsx";
 import QRCode from "../components/QRCode.jsx";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
 import ScheduleMaintenanceDialog from "../components/ScheduleMaintenanceDialog.jsx";
+import CompleteWorkOrderDialog from "../components/CompleteWorkOrderDialog.jsx";
 import LoadingState from "../components/LoadingState.jsx";
 import ErrorState from "../components/ErrorState.jsx";
 import EmptyState from "../components/EmptyState.jsx";
 import {
   RiskBadge, StatusBadge, ConditionBadge, PriorityBadge, CriticalityBadge,
 } from "../components/Badges.jsx";
+
+// Mirrors AppDataContext.jsx's CORRECTIVE_TYPES — work orders of these types
+// go through the Repair Record dialog on completion instead of completing
+// immediately. Kept local here since it isn't exported from the context
+// (same approach already used in MaintenanceScreen.jsx).
+const CORRECTIVE_TYPES = new Set(["Corrective", "Emergency Repair"]);
 
 const TABS = [
   { key: "overview", label: "Overview", icon: MapPin },
@@ -246,7 +253,7 @@ function OverviewTab({ eq }) {
 /* ---------------------------------- Maintenance ---------------------------------- */
 function MaintenanceTab({ eq }) {
   const { can } = useRole();
-  const { addMaintenanceRecord, settings, workOrders, completeWorkOrder, cancelWorkOrder } = useData();
+  const { addMaintenanceRecord, settings, workOrders, tickets, completeWorkOrder, completeWorkOrderWithRepair, cancelWorkOrder } = useData();
   const checklistTemplate = settings.maintenance?.defaultChecklist || [];
   const [showForm, setShowForm] = useState(false);
   const [checked, setChecked] = useState({});
@@ -255,6 +262,44 @@ function MaintenanceTab({ eq }) {
 
   const daysOverdue = daysBetween(eq.nextMaintenanceDate, NOW);
   const myWorkOrders = workOrders.filter((w) => w.equipmentId === eq.id && !["Completed", "Cancelled"].includes(w.status));
+
+  // Repair Record completion dialog state, for Corrective/Emergency Repair
+  // work orders only — same pattern as MaintenanceScreen.jsx's WorkOrdersTab.
+  // Non-corrective work orders keep completing immediately via
+  // completeWorkOrder(id).
+  const [completingWo, setCompletingWo] = useState(null);
+  const [completing, setCompleting] = useState(false);
+  const [completeError, setCompleteError] = useState(null);
+
+  function handleCompleteClick(w) {
+    if (CORRECTIVE_TYPES.has(w.type)) {
+      setCompleteError(null);
+      setCompletingWo(w);
+    } else {
+      completeWorkOrder(w.id);
+    }
+  }
+
+  function closeCompleteDialog() {
+    if (completing) return; // don't allow closing mid-submit
+    setCompletingWo(null);
+    setCompleteError(null);
+  }
+
+  async function handleRepairSubmit(repairData) {
+    if (completing) return; // guard against duplicate/concurrent submission
+    setCompleting(true);
+    setCompleteError(null);
+    try {
+      await completeWorkOrderWithRepair(completingWo.id, repairData);
+      setCompletingWo(null);
+    } catch (err) {
+      console.error("[EquipmentProfileScreen] Failed to complete work order with repair record:", err);
+      setCompleteError(err.message || "Failed to save the repair record. The work order was not changed — please try again.");
+    } finally {
+      setCompleting(false);
+    }
+  }
 
   function submit() {
     addMaintenanceRecord(eq.id, {
@@ -309,7 +354,7 @@ function MaintenanceTab({ eq }) {
                   <div className="text-[11px] text-muted">{fmtDate(w.scheduledDate)} · {w.assignedEngineer || "Unassigned"} · {w.status}</div>
                 </div>
                 <div className="flex gap-2">
-                  <button onClick={() => completeWorkOrder(w.id)} className="text-xs font-semibold text-[#1F9D6B] hover:underline">Complete</button>
+                  <button onClick={() => handleCompleteClick(w)} className="text-xs font-semibold text-[#1F9D6B] hover:underline">Complete</button>
                   <button onClick={() => cancelWorkOrder(w.id)} className="text-xs font-semibold text-muted hover:underline">Cancel</button>
                 </div>
               </div>
@@ -319,6 +364,17 @@ function MaintenanceTab({ eq }) {
       )}
 
       <ScheduleMaintenanceDialog open={scheduleOpen} onClose={() => setScheduleOpen(false)} equipmentId={eq.id} />
+
+      <CompleteWorkOrderDialog
+        open={!!completingWo}
+        onClose={closeCompleteDialog}
+        workOrder={completingWo}
+        equipment={eq}
+        ticket={completingWo ? tickets.find((t) => t.id === completingWo.faultTicketId) : undefined}
+        onSubmit={handleRepairSubmit}
+        submitting={completing}
+        submitError={completeError}
+      />
 
       {showForm && (
         <div className="rounded-xl border border-border bg-surface p-5 shadow-card">
