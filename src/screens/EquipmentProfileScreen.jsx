@@ -371,11 +371,16 @@ function MaintenanceTab({ eq }) {
 /* ---------------------------------- Repairs ---------------------------------- */
 function RepairsTab({ eq }) {
   const { can } = useRole();
-  const { addRepairRecord } = useData();
+  const { addRepairRecord, repairRecords } = useData();
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ faultDescription: "", suspectedCause: "", correctiveAction: "", cost: "", downtimeHours: "" });
 
   const { mttr, mtbf, breakdownCount } = eq._ai.reliability;
+
+  // Real repair records for this equipment, from the repair_records table
+  // (via AppDataContext's repairRecords, populated by repairRecordService).
+  // Already ordered newest-first by repairRecordService.getAll().
+  const equipmentRepairRecords = repairRecords.filter((r) => r.equipmentId === eq.id);
 
   function submit() {
     addRepairRecord(eq.id, {
@@ -442,16 +447,20 @@ function RepairsTab({ eq }) {
         )}
 
         <div className="flex flex-col gap-3">
-          {eq.repairRecords.length === 0 && <div className="text-sm text-muted py-4 text-center">No repair records yet.</div>}
-          {eq.repairRecords.map((r) => (
+          {equipmentRepairRecords.length === 0 && <div className="text-sm text-muted py-4 text-center">No repair records yet.</div>}
+          {equipmentRepairRecords.map((r) => (
             <div key={r.id} className="rounded-lg border border-border p-3">
               <div className="flex items-center justify-between mb-1">
                 <span className="text-xs font-mono text-muted">{fmtDate(r.date)}</span>
-                <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-full text-[#E07A2F] bg-[#E07A2F17]">{r.finalStatus}</span>
+                <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-full text-[#E07A2F] bg-[#E07A2F17]">{r.finalStatus || "—"}</span>
               </div>
-              <div className="text-sm text-ink font-medium">{r.faultDescription}</div>
-              <div className="text-xs text-muted mt-1">Cause: {r.suspectedCause} · Action: {r.correctiveAction}</div>
-              <div className="text-xs text-muted mt-1">Parts: {r.partsReplaced} · Cost: ₦{(r.cost || 0).toLocaleString()} · Downtime: {r.downtimeHours}h · Engineer: {r.engineer}</div>
+              <div className="text-sm text-ink font-medium">{r.faultDescription || "—"}</div>
+              <div className="text-xs text-muted mt-1">Cause: {r.suspectedCause || "—"} · Diagnosis: {r.diagnosis || "—"}</div>
+              <div className="text-xs text-muted mt-1">Action: {r.correctiveAction || "—"} · Parts: {r.partsReplaced || "—"}</div>
+              <div className="text-xs text-muted mt-1">Cost: ₦{(r.cost || 0).toLocaleString()} · Downtime: {r.downtimeHours ?? 0}h · Engineer: {r.engineer || "—"}</div>
+              {r.workOrderId && (
+                <div className="text-[11px] font-mono text-faint mt-1">Work order: {r.workOrderId}</div>
+              )}
             </div>
           ))}
         </div>
