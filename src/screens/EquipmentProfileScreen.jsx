@@ -307,7 +307,6 @@ function MaintenanceTab({ eq }) {
       date: NOW.toISOString().slice(0, 10),
       note: note || "Preventive maintenance checklist completed",
       engineer: eq.assignedEngineer,
-      cost: 15000,
       checklist: checklistTemplate.filter((_, i) => checked[i]),
     });
     setShowForm(false);
