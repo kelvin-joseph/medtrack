@@ -30,6 +30,16 @@ function fromDb(row) {
   };
 }
 
+// cost and downtime_hours both have DB DEFAULT 0. If a blank value were
+// simply omitted from the insert payload, Postgres would silently apply
+// that default, making "left blank" indistinguishable from "entered 0".
+// This normalizes blank (empty string / undefined / null) to an explicit
+// null so blank, 0, and a real entered value all round-trip distinctly.
+function toNullableNumber(value) {
+  if (value === "" || value === undefined || value === null) return null;
+  return value;
+}
+
 function toDb(record) {
   const row = {};
   if ("equipmentId" in record) row.equipment_id = record.equipmentId;
@@ -41,11 +51,11 @@ function toDb(record) {
   if ("diagnosis" in record) row.diagnosis = record.diagnosis;
   if ("correctiveAction" in record) row.corrective_action = record.correctiveAction;
   if ("partsReplaced" in record) row.parts_replaced = record.partsReplaced;
-  if ("cost" in record) row.cost = record.cost;
+  if ("cost" in record) row.cost = toNullableNumber(record.cost);
   if ("engineer" in record) row.engineer = record.engineer;
   if ("repairStart" in record) row.repair_start = record.repairStart;
   if ("repairCompletion" in record) row.repair_completion = record.repairCompletion;
-  if ("downtimeHours" in record) row.downtime_hours = record.downtimeHours;
+  if ("downtimeHours" in record) row.downtime_hours = toNullableNumber(record.downtimeHours);
   if ("finalStatus" in record) row.final_status = record.finalStatus;
   if ("workOrderId" in record) row.work_order_id = record.workOrderId;
   // Deliberately no hospital_id mapping: even if a caller includes
