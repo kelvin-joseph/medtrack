@@ -430,12 +430,28 @@ function RepairsTab({ eq }) {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ faultDescription: "", suspectedCause: "", correctiveAction: "", cost: "", downtimeHours: "" });
 
-  const { mttr, mtbf, breakdownCount } = eq._ai.reliability;
-
   // Real repair records for this equipment, from the repair_records table
   // (via AppDataContext's repairRecords, populated by repairRecordService).
   // Already ordered newest-first by repairRecordService.getAll().
   const equipmentRepairRecords = repairRecords.filter((r) => r.equipmentId === eq.id);
+
+  // KPIs come from the real repair_records rows, not the legacy
+  // eq.repairRecords JSON behind eq._ai.reliability. Same formulas as
+  // computeReliabilityStats: MTTR averages downtime over records that have a
+  // downtime value (NULL/blank excluded, explicit 0 counts); MTBF is
+  // operating days since install divided by the breakdown count.
+  const breakdownCount = equipmentRepairRecords.length;
+  const withDowntime = equipmentRepairRecords.filter(
+    (r) => r.downtimeHours !== null && r.downtimeHours !== undefined && r.downtimeHours !== "",
+  );
+  const mttr = withDowntime.length
+    ? withDowntime.reduce((s, r) => s + Number(r.downtimeHours), 0) / withDowntime.length
+    : null;
+  const operatingDays = daysBetween(eq.installDate, NOW);
+  const mtbf =
+    breakdownCount && Number.isFinite(operatingDays)
+      ? Math.round(operatingDays / breakdownCount)
+      : null;
 
   function submit() {
     addRepairRecord(eq.id, {
