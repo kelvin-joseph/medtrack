@@ -90,9 +90,12 @@ export function AppDataProvider({ children }) {
   // Equipment, settings, work orders, fault tickets, and the audit log are
   // all Supabase-backed (async) now.
   const refreshFromServices = useCallback(async () => {
-    setEquipment(await equipmentService.getAll());
+    // Fetched once and shared: the same repair_records rows feed both the
+    // repairRecords state and equipment's Total Cost calculation.
+    const realRepairRecords = await repairRecordService.getAll();
+    setEquipment(await equipmentService.getAll(realRepairRecords));
     setWorkOrders(await workOrderService.getAll());
-    setRepairRecords(await repairRecordService.getAll());
+    setRepairRecords(realRepairRecords);
     setTickets(await faultService.getAll());
     setSettings(await settingsService.get());
     setAuditLog(await auditService.getAll());
@@ -363,7 +366,7 @@ export function AppDataProvider({ children }) {
           downtimeHours: Number(completion.downtimeHours) || 0,
           finalStatus: "Resolved",
         });
-      } else {
+      } else if (!completion.repairAlreadyLogged) {
         await maintenanceService.addRecord(wo.equipmentId, {
           type: wo.type === "Preventive" ? "Preventive" : wo.type,
           date: completedDate,

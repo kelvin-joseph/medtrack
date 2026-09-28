@@ -942,9 +942,16 @@ function DocumentsTab({ eq }) {
 
 /* ---------------------------------- Costs ---------------------------------- */
 function CostsTab({ eq }) {
+  const { repairRecords } = useData();
   const { totalCost } = eq._ai.reliability;
   const maintCost = eq.maintenanceRecords.reduce((s, r) => s + (r.cost || 0), 0);
-  const repairCost = eq.repairRecords.reduce((s, r) => s + (r.cost || 0), 0);
+  // Repair cost comes from the real repair_records table (via
+  // AppDataContext's repairRecords, same source RepairsTab uses), not the
+  // legacy equipment.details.repairRecords JSON. Null/undefined/blank cost
+  // counts as no cost; an explicit 0 is preserved as 0.
+  const repairCost = repairRecords
+    .filter((r) => r.equipmentId === eq.id)
+    .reduce((s, r) => s + (r.cost === null || r.cost === undefined || r.cost === "" ? 0 : Number(r.cost)), 0);
 
   return (
     <div className="flex flex-col gap-4">

@@ -2,6 +2,7 @@ import { supabase } from "./supabaseClient.js";
 import { readValue } from "./storage.js";
 import { recomputeAI } from "../data/equipment.js";
 import * as settingsService from "./settingsService.js";
+import * as repairRecordService from "./repairRecordService.js";
 
 const TABLE = "equipment";
 const LOCALSTORAGE_MIGRATION_FLAG = "medtrack_equipment_migrated_to_supabase";
@@ -9,6 +10,12 @@ const LOCALSTORAGE_MIGRATION_FLAG = "medtrack_equipment_migrated_to_supabase";
 async function currentThresholds() {
   const settings = await settingsService.get();
   return settings?.risk?.thresholds;
+}
+
+// Real repair_records rows (RLS-scoped), used so _ai.reliability.totalCost
+// reflects actual repair costs rather than the legacy details.repairRecords JSON.
+async function currentRepairRecords() {
+  return repairRecordService.getAll();
 }
 
 // Columns promoted out of `details` for filtering/sorting/RLS. Keep this
@@ -146,7 +153,10 @@ function ensureMigrated() {
 
 // ---------- public API (same shape as the localStorage version, now async) ----------
 
-export async function getAll() {
+// `repairRecords` is optional: callers that already hold the real
+// repair_records rows (AppDataContext.refreshFromServices) pass them in to
+// avoid a duplicate query; otherwise they're fetched here.
+export async function getAll(repairRecords) {
   await ensureMigrated();
   const { data, error } = await supabase
     .from(TABLE)
@@ -154,7 +164,8 @@ export async function getAll() {
     .order("created_at", { ascending: false });
   if (error) throw error;
   const thresholds = await currentThresholds();
-  return data.map((row) => recomputeAI(fromDb(row), thresholds));
+  const repairs = repairRecords ?? (await currentRepairRecords());
+  return data.map((row) => recomputeAI(fromDb(row), thresholds, repairs));
 }
 
 export async function getById(id) {
@@ -166,7 +177,7 @@ export async function getById(id) {
     .maybeSingle();
   if (error) throw error;
   if (!data) return null;
-  return recomputeAI(fromDb(data), await currentThresholds());
+  return recomputeAI(fromDb(data), await currentThresholds(), await currentRepairRecords());
 }
 
 const EMPTY_EQUIPMENT = () => ({
@@ -229,7 +240,7 @@ export async function update(id, patch) {
     .select()
     .single();
   if (error) throw error;
-  return recomputeAI(fromDb(updated), await currentThresholds());
+  return recomputeAI(fromDb(updated), await currentThresholds(), await currentRepairRecords());
 }
 
 export async function remove(id) {

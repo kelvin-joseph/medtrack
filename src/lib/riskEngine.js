@@ -278,7 +278,7 @@ export function computePriority(eq, risk, failureProb) {
 }
 
 /** Mean Time To Repair (avg downtime hours per resolved repair) + Mean Time Between Failures (days). */
-export function computeReliabilityStats(eq) {
+export function computeReliabilityStats(eq, realRepairRecords = []) {
   const resolved = eq.repairRecords.filter((r) => r.downtimeHours != null);
   const mttr = resolved.length
     ? resolved.reduce((s, r) => s + r.downtimeHours, 0) / resolved.length
@@ -294,10 +294,22 @@ export function computeReliabilityStats(eq) {
     (s, r) => s + (r.downtimeHours || 0),
     0,
   );
-  const totalCost = [...eq.maintenanceRecords, ...eq.repairRecords].reduce(
+  // Maintenance cost comes from eq.maintenanceRecords; repair cost comes from
+  // the real repair_records rows for this equipment (realRepairRecords), NOT
+  // the legacy eq.repairRecords JSON. Null/undefined/blank cost counts as no
+  // cost; an explicit 0 is preserved as 0.
+  const maintenanceCost = eq.maintenanceRecords.reduce(
     (s, r) => s + (r.cost || 0),
     0,
   );
+  const repairCost = realRepairRecords
+    .filter((r) => r.equipmentId === eq.id)
+    .reduce(
+      (s, r) =>
+        s + (r.cost === null || r.cost === undefined || r.cost === "" ? 0 : Number(r.cost)),
+      0,
+    );
+  const totalCost = maintenanceCost + repairCost;
 
   return {
     mttr,

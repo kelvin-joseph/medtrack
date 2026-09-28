@@ -28,20 +28,20 @@ export const CATEGORY_ICON = {
 export const STATUSES = ["Operational", "Under Maintenance", "Under Repair", "Out of Service", "Decommissioned"];
 export const CONDITIONS = ["Excellent", "Good", "Fair", "Poor", "Critical"];
 
-function attachAI(eq, thresholds) {
+function attachAI(eq, thresholds, repairRecords) {
   const risk = computeRiskScore(eq, thresholds);
   const failureProb = computeFailureProbability(eq, risk);
   const window = computePredictedWindow(eq, risk, failureProb);
   const priority = computePriority(eq, risk, failureProb);
-  const reliability = computeReliabilityStats(eq);
+  const reliability = computeReliabilityStats(eq, repairRecords);
   const recommendations = computeRecommendations(eq, risk, failureProb);
   const replacement = computeReplacementRecommendation(eq, risk);
   return { risk, failureProb, window, priority, reliability, recommendations, replacement };
 }
 
 /** Attaches (or refreshes) the `_ai` block on a single equipment record. `thresholds` comes from Settings → Risk & AI. */
-export function recomputeAI(eq, thresholds) {
-  return { ...eq, _ai: attachAI(eq, thresholds) };
+export function recomputeAI(eq, thresholds, repairRecords) {
+  return { ...eq, _ai: attachAI(eq, thresholds, repairRecords) };
 }
 
 /** Attaches `_ai` across a whole list — used when seeding/loading equipment. */
