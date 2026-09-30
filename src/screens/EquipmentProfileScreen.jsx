@@ -463,11 +463,11 @@ function RepairsTab({ eq }) {
       diagnosis: "Pending",
       correctiveAction: form.correctiveAction || "Pending",
       partsReplaced: "—",
-      cost: Number(form.cost) || 0,
+      cost: form.cost,
       engineer: eq.assignedEngineer,
-      repairStart: NOW.toISOString().slice(0, 10),
+      repairStart: null,
       repairCompletion: null,
-      downtimeHours: Number(form.downtimeHours) || 0,
+      downtimeHours: form.downtimeHours,
       finalStatus: "In Progress",
     });
     setShowForm(false);

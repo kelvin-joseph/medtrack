@@ -256,7 +256,10 @@ export function AppDataProvider({ children }) {
 
   const addRepairRecord = useCallback(
     async (id, record) => {
-      await maintenanceService.addRepair(id, record);
+      // Real repair_records write (repairRecordService.toDb() normalizes
+      // blank cost/downtimeHours to NULL, preserves an explicit 0) --
+      // replaces the old equipment.details.repairRecords JSON write.
+      await repairRecordService.create({ ...record, equipmentId: id });
       await refreshFromServices();
       logAudit("Recorded breakdown/repair", id, record.faultDescription);
       showToast("Repair recorded.");
