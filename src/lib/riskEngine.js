@@ -43,13 +43,20 @@ export function defaultCriticality(category) {
   return CRITICALITY_BY_CATEGORY[category] || "Moderate";
 }
 
-function recentRepairs(eq, days = 365) {
-  return eq.repairRecords.filter((r) => daysBetween(r.date, NOW) <= days);
+function recentRepairs(equipmentRepairs, days = 365) {
+  return equipmentRepairs.filter((r) => daysBetween(r.date, NOW) <= days);
 }
 
-function totalDowntimeHours(eq, days = 365) {
-  return recentRepairs(eq, days).reduce(
-    (sum, r) => sum + (r.downtimeHours || 0),
+// Supabase returns numeric columns (like downtime_hours) as strings, so
+// summing them with the bare `+` operator silently string-concatenates
+// instead of adding. Same null/blank -> 0 semantics already used for costs.
+function downtimeNumber(value) {
+  return value === null || value === undefined || value === "" ? 0 : Number(value);
+}
+
+function totalDowntimeHours(equipmentRepairs, days = 365) {
+  return recentRepairs(equipmentRepairs, days).reduce(
+    (sum, r) => sum + downtimeNumber(r.downtimeHours),
     0,
   );
 }
@@ -61,7 +68,7 @@ const DEFAULT_THRESHOLDS = { low: 20, moderate: 40, high: 60 }; // upper bound o
  * (System Administrator); these are the defaults matching the brief:
  *  0-20 Very Low · 21-40 Low · 41-60 Moderate · 61-80 High · 81-100 Critical
  */
-export function computeRiskScore(eq, thresholds = DEFAULT_THRESHOLDS) {
+export function computeRiskScore(eq, thresholds = DEFAULT_THRESHOLDS, equipmentRepairs = []) {
   const t = { ...DEFAULT_THRESHOLDS, ...thresholds };
 
   // Any of these being missing/invalid used to silently produce a NaN score
@@ -85,7 +92,7 @@ export function computeRiskScore(eq, thresholds = DEFAULT_THRESHOLDS) {
 
   const usageFactor = (USAGE_WEIGHT[eq.usageFrequency] ?? 0.5) * 15;
 
-  const breakdowns12mo = recentRepairs(eq, 365).length;
+  const breakdowns12mo = recentRepairs(equipmentRepairs, 365).length;
   const breakdownFactor = Math.min(breakdowns12mo / 4, 1) * 20;
 
   const rawDaysOverdue = daysBetween(eq.nextMaintenanceDate, NOW);
@@ -94,12 +101,20 @@ export function computeRiskScore(eq, thresholds = DEFAULT_THRESHOLDS) {
   const daysOverdue = hasValidNextMaintenance ? Math.max(0, rawDaysOverdue) : 0;
   const overdueFactor = Math.min(daysOverdue / 30, 1) * 15;
 
-  const downtimeFactor = Math.min(totalDowntimeHours(eq, 365) / 200, 1) * 10;
+  const downtimeFactor = Math.min(totalDowntimeHours(equipmentRepairs, 365) / 200, 1) * 10;
 
-  const costs = eq.repairRecords.map((r) => r.cost || 0);
+  // Real repairRecords arrive newest-first (repairRecordService.getAll()
+  // orders by created_at DESC); the cost-trend comparison below assumes
+  // oldest -> newest (costs[0] vs costs[last]), same as the legacy JSON
+  // ordering this replaces. Sort a copy chronologically rather than mutate
+  // the array attachAI passed in.
+  const chronologicalRepairs = [...equipmentRepairs].sort(
+    (a, b) => new Date(a.date) - new Date(b.date),
+  );
+  const costs = chronologicalRepairs.map((r) => r.cost || 0);
   const costTrendUp = costs.length >= 2 && costs[costs.length - 1] > costs[0];
   const repairFactor =
-    Math.min(eq.repairRecords.length / 5, 1) * 5 + (costTrendUp ? 5 : 0);
+    Math.min(equipmentRepairs.length / 5, 1) * 5 + (costTrendUp ? 5 : 0);
 
   const criticalityFactor =
     (CRITICALITY_WEIGHT[eq.clinicalCriticality] ?? 0.5) * 10;
@@ -157,9 +172,9 @@ export function computeRiskScore(eq, thresholds = DEFAULT_THRESHOLDS) {
     );
   if (costTrendUp)
     explanation.push("Repair cost trending upward over recent incidents");
-  if (totalDowntimeHours(eq, 365) > 0)
+  if (totalDowntimeHours(equipmentRepairs, 365) > 0)
     explanation.push(
-      `${Math.round(totalDowntimeHours(eq, 365))} hours of downtime in the last 12 months`,
+      `${Math.round(totalDowntimeHours(equipmentRepairs, 365))} hours of downtime in the last 12 months`,
     );
   explanation.push(`Clinical criticality: ${eq.clinicalCriticality}`);
 
@@ -180,18 +195,18 @@ export function computeRiskScore(eq, thresholds = DEFAULT_THRESHOLDS) {
   };
 }
 
-const HISTORY_DEPTH_FOR = (eq) =>
-  eq.maintenanceRecords.length + eq.repairRecords.length;
+const HISTORY_DEPTH_FOR = (eq, equipmentRepairs) =>
+  eq.maintenanceRecords.length + equipmentRepairs.length;
 
 /** Failure probability at 30/90/180/365 days, scaled from the risk score. */
-export function computeFailureProbability(eq, risk) {
+export function computeFailureProbability(eq, risk, equipmentRepairs = []) {
   const s = risk.score / 100;
   const p30 = Math.round(Math.min(97, s * 22));
   const p90 = Math.round(Math.min(97, s * 48));
   const p180 = Math.round(Math.min(97, s * 68));
   const p365 = Math.round(Math.min(97, s * 88));
 
-  const depth = HISTORY_DEPTH_FOR(eq);
+  const depth = HISTORY_DEPTH_FOR(eq, equipmentRepairs);
   let confidence, confidenceNote;
   if (depth >= 5) {
     confidence = "High";
@@ -209,7 +224,7 @@ export function computeFailureProbability(eq, risk) {
 }
 
 /** Predicted failure window (a range, not a single date) + contributing factors. */
-export function computePredictedWindow(eq, risk, failureProb) {
+export function computePredictedWindow(eq, risk, failureProb, equipmentRepairs = []) {
   if (failureProb.confidence === "Low") {
     return {
       start: null,
@@ -226,7 +241,7 @@ export function computePredictedWindow(eq, risk, failureProb) {
   const start = new Date(NOW.getTime() + (centerDays - spread) * DAY);
   const end = new Date(NOW.getTime() + (centerDays + spread) * DAY);
   const confidencePercent = Math.round(
-    50 + Math.min(HISTORY_DEPTH_FOR(eq), 10) * 3.5,
+    50 + Math.min(HISTORY_DEPTH_FOR(eq, equipmentRepairs), 10) * 3.5,
   );
 
   return {
@@ -278,37 +293,40 @@ export function computePriority(eq, risk, failureProb) {
 }
 
 /** Mean Time To Repair (avg downtime hours per resolved repair) + Mean Time Between Failures (days). */
-export function computeReliabilityStats(eq, realRepairRecords = []) {
-  const resolved = eq.repairRecords.filter((r) => r.downtimeHours != null);
+export function computeReliabilityStats(eq, equipmentRepairs = []) {
+  // Only records with a known downtime value participate in the MTTR
+  // average -- NULL/blank downtime is excluded, an explicit 0 still counts.
+  const resolved = equipmentRepairs.filter((r) => r.downtimeHours != null);
   const mttr = resolved.length
-    ? resolved.reduce((s, r) => s + r.downtimeHours, 0) / resolved.length
+    ? resolved.reduce((s, r) => s + downtimeNumber(r.downtimeHours), 0) / resolved.length
     : null;
 
   const operatingDays = daysBetween(eq.installDate, NOW);
   const mtbf =
-    eq.repairRecords.length && Number.isFinite(operatingDays)
-      ? Math.round(operatingDays / eq.repairRecords.length)
+    equipmentRepairs.length && Number.isFinite(operatingDays)
+      ? Math.round(operatingDays / equipmentRepairs.length)
       : null;
 
-  const totalDowntime = eq.repairRecords.reduce(
-    (s, r) => s + (r.downtimeHours || 0),
+  // Total downtime keeps the existing null-contributes-0 behavior; downtime
+  // values are coerced to numbers first since Supabase returns numeric
+  // columns as strings (see downtimeNumber() above).
+  const totalDowntime = equipmentRepairs.reduce(
+    (s, r) => s + downtimeNumber(r.downtimeHours),
     0,
   );
   // Maintenance cost comes from eq.maintenanceRecords; repair cost comes from
-  // the real repair_records rows for this equipment (realRepairRecords), NOT
+  // the real repair_records rows for this equipment (equipmentRepairs), NOT
   // the legacy eq.repairRecords JSON. Null/undefined/blank cost counts as no
-  // cost; an explicit 0 is preserved as 0.
+  // cost; an explicit 0 is preserved as 0. (Already migrated -- unchanged.)
   const maintenanceCost = eq.maintenanceRecords.reduce(
     (s, r) => s + (r.cost || 0),
     0,
   );
-  const repairCost = realRepairRecords
-    .filter((r) => r.equipmentId === eq.id)
-    .reduce(
-      (s, r) =>
-        s + (r.cost === null || r.cost === undefined || r.cost === "" ? 0 : Number(r.cost)),
-      0,
-    );
+  const repairCost = equipmentRepairs.reduce(
+    (s, r) =>
+      s + (r.cost === null || r.cost === undefined || r.cost === "" ? 0 : Number(r.cost)),
+    0,
+  );
   const totalCost = maintenanceCost + repairCost;
 
   return {
@@ -316,12 +334,12 @@ export function computeReliabilityStats(eq, realRepairRecords = []) {
     mtbf,
     totalDowntime,
     totalCost,
-    breakdownCount: eq.repairRecords.length,
+    breakdownCount: equipmentRepairs.length,
   };
 }
 
 /** AI-style maintenance recommendations, phrased as decision support (not autonomous decisions). */
-export function computeRecommendations(eq, risk, failureProb) {
+export function computeRecommendations(eq, risk, failureProb, equipmentRepairs = []) {
   const recs = [];
   const daysOverdue = Math.max(0, daysBetween(eq.nextMaintenanceDate, NOW));
   if (daysOverdue > 0)
@@ -329,7 +347,7 @@ export function computeRecommendations(eq, risk, failureProb) {
       `Schedule preventive maintenance within 7 days (overdue by ${daysOverdue} days).`,
     );
 
-  const recurring = eq.repairRecords.filter(
+  const recurring = equipmentRepairs.filter(
     (r) => r.finalStatus && r.finalStatus.toLowerCase().includes("recurring"),
   );
   if (recurring.length > 0) {
@@ -338,7 +356,12 @@ export function computeRecommendations(eq, risk, failureProb) {
     );
   }
 
-  const costs = eq.repairRecords.map((r) => r.cost || 0);
+  // Same chronological-ordering fix as computeRiskScore's cost trend: real
+  // repairRecords arrive newest-first, this comparison assumes oldest first.
+  const chronologicalRepairs = [...equipmentRepairs].sort(
+    (a, b) => new Date(a.date) - new Date(b.date),
+  );
+  const costs = chronologicalRepairs.map((r) => r.cost || 0);
   if (costs.length >= 2) {
     const change =
       ((costs[costs.length - 1] - costs[0]) / Math.max(costs[0], 1)) * 100;
@@ -365,13 +388,18 @@ export function computeRecommendations(eq, risk, failureProb) {
 }
 
 /** AI-assisted replacement recommendation for the lifecycle module. */
-export function computeReplacementRecommendation(eq, risk) {
+export function computeReplacementRecommendation(eq, risk, equipmentRepairs = []) {
   const ageYears = daysBetween(eq.installDate, NOW) / 365;
   const reasons = [];
   if (ageYears >= eq.expectedLifespanYears)
     reasons.push("Equipment age exceeds expected useful life");
-  if (eq.repairRecords.length >= 3) reasons.push("High repair frequency");
-  const costs = eq.repairRecords.map((r) => r.cost || 0);
+  if (equipmentRepairs.length >= 3) reasons.push("High repair frequency");
+  // Same chronological-ordering fix as elsewhere in this file: real
+  // repairRecords arrive newest-first, this comparison assumes oldest first.
+  const chronologicalRepairs = [...equipmentRepairs].sort(
+    (a, b) => new Date(a.date) - new Date(b.date),
+  );
+  const costs = chronologicalRepairs.map((r) => r.cost || 0);
   if (costs.length >= 2 && costs[costs.length - 1] > costs[0] * 1.25)
     reasons.push("Increasing maintenance costs");
   if (risk.score >= 61) reasons.push("High failure probability");

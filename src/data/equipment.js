@@ -29,13 +29,17 @@ export const STATUSES = ["Operational", "Under Maintenance", "Under Repair", "Ou
 export const CONDITIONS = ["Excellent", "Good", "Fair", "Poor", "Critical"];
 
 function attachAI(eq, thresholds, repairRecords) {
-  const risk = computeRiskScore(eq, thresholds);
-  const failureProb = computeFailureProbability(eq, risk);
-  const window = computePredictedWindow(eq, risk, failureProb);
+  // Real repair_records rows for this equipment only. Every Risk Engine
+  // calculation that used to read the legacy eq.repairRecords JSON now
+  // takes this instead.
+  const equipmentRepairs = (repairRecords || []).filter((r) => r.equipmentId === eq.id);
+  const risk = computeRiskScore(eq, thresholds, equipmentRepairs);
+  const failureProb = computeFailureProbability(eq, risk, equipmentRepairs);
+  const window = computePredictedWindow(eq, risk, failureProb, equipmentRepairs);
   const priority = computePriority(eq, risk, failureProb);
-  const reliability = computeReliabilityStats(eq, repairRecords);
-  const recommendations = computeRecommendations(eq, risk, failureProb);
-  const replacement = computeReplacementRecommendation(eq, risk);
+  const reliability = computeReliabilityStats(eq, equipmentRepairs);
+  const recommendations = computeRecommendations(eq, risk, failureProb, equipmentRepairs);
+  const replacement = computeReplacementRecommendation(eq, risk, equipmentRepairs);
   return { risk, failureProb, window, priority, reliability, recommendations, replacement };
 }
 
