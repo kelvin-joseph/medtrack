@@ -6,7 +6,15 @@ import { exportCSV, exportXLSX } from "../lib/exportEngine.js";
 
 const today = () => new Date().toISOString().slice(0, 10);
 
-function buildReports({ equipment, tickets, auditLog }) {
+// Supabase returns numeric columns (cost, downtime_hours) as strings, so
+// exporting them as-is would render as text in Excel/CSV instead of numbers.
+// Same null/blank -> 0 semantics used elsewhere (e.g. riskEngine.js's
+// downtimeNumber(), DashboardScreen.jsx's toNumber()).
+function toNumber(value) {
+  return value === null || value === undefined || value === "" ? 0 : Number(value);
+}
+
+function buildReports({ equipment, tickets, auditLog, repairRecords }) {
   return [
     {
       key: "inventory",
@@ -68,10 +76,10 @@ function buildReports({ equipment, tickets, auditLog }) {
         { header: "Status", key: "status" },
         { header: "Assigned Engineer", key: "engineer" },
       ],
-      rows: () => equipment.flatMap((e) => e.repairRecords.map((r) => ({
+      rows: () => equipment.flatMap((e) => repairRecords.filter((r) => r.equipmentId === e.id).map((r) => ({
         equipment: e.name, category: e.category, date: fmtDate(r.date), fault: r.faultDescription,
-        errorCode: r.errorCode, cause: r.suspectedCause, action: r.correctiveAction, cost: r.cost,
-        downtime: r.downtimeHours, status: r.finalStatus, engineer: r.engineer,
+        errorCode: r.errorCode, cause: r.suspectedCause, action: r.correctiveAction, cost: toNumber(r.cost),
+        downtime: toNumber(r.downtimeHours), status: r.finalStatus, engineer: r.engineer,
       }))),
     },
     {
@@ -145,7 +153,8 @@ function buildReports({ equipment, tickets, auditLog }) {
       rows: () => {
         const byEngineer = {};
         equipment.forEach((e) => {
-          [...e.maintenanceRecords, ...e.repairRecords].forEach((r) => {
+          const eqRepairs = repairRecords.filter((r) => r.equipmentId === e.id);
+          [...e.maintenanceRecords, ...eqRepairs].forEach((r) => {
             const name = r.engineer || "Unassigned";
             byEngineer[name] = (byEngineer[name] || 0) + 1;
           });
@@ -190,7 +199,7 @@ function buildReports({ equipment, tickets, auditLog }) {
  * engineering department would want in one professionally formatted file —
  * timestamps, categories, maintenance status, assigned engineers, fault
  * history, and AI risk scores, across the whole fleet. */
-function buildComprehensiveWorkbook({ equipment, tickets, auditLog }) {
+function buildComprehensiveWorkbook({ equipment, tickets, auditLog, repairRecords }) {
   const generatedAt = new Date().toLocaleString("en-GB");
   return {
     filename: `medtrack-comprehensive-fleet-report-${today()}.xlsx`,
@@ -256,9 +265,9 @@ function buildComprehensiveWorkbook({ equipment, tickets, auditLog }) {
           { header: "Status", key: "status" },
           { header: "Assigned Engineer", key: "engineer" },
         ],
-        rows: equipment.flatMap((e) => e.repairRecords.map((r) => ({
+        rows: equipment.flatMap((e) => repairRecords.filter((r) => r.equipmentId === e.id).map((r) => ({
           date: fmtDate(r.date), equipment: e.name, category: e.category, fault: r.faultDescription,
-          errorCode: r.errorCode, action: r.correctiveAction, downtime: r.downtimeHours,
+          errorCode: r.errorCode, action: r.correctiveAction, downtime: toNumber(r.downtimeHours),
           status: r.finalStatus, engineer: r.engineer,
         }))),
       },
@@ -287,10 +296,10 @@ function buildComprehensiveWorkbook({ equipment, tickets, auditLog }) {
 }
 
 export default function ReportsScreen() {
-  const { equipment, tickets, auditLog, showToast } = useData();
+  const { equipment, tickets, auditLog, repairRecords, showToast } = useData();
   const [busyKey, setBusyKey] = useState(null);
 
-  const reports = buildReports({ equipment, tickets, auditLog });
+  const reports = buildReports({ equipment, tickets, auditLog, repairRecords });
 
   async function runExcel(report) {
     setBusyKey(report.key);
@@ -324,7 +333,7 @@ export default function ReportsScreen() {
   async function runComprehensive() {
     setBusyKey("comprehensive");
     try {
-      await exportXLSX(buildComprehensiveWorkbook({ equipment, tickets, auditLog }));
+      await exportXLSX(buildComprehensiveWorkbook({ equipment, tickets, auditLog, repairRecords }));
     } catch (err) {
       showToast(err.message || "Failed to generate the comprehensive report. Please try again.", "error");
     } finally {
