@@ -969,6 +969,17 @@ function CostsTab({ eq }) {
     .filter((r) => r.equipmentId === eq.id)
     .reduce((s, r) => s + (r.cost === null || r.cost === undefined || r.cost === "" ? 0 : Number(r.cost)), 0);
 
+  // Cost History repair rows: same real repair_records source as the Repair
+  // Cost card above, not the legacy equipment.details.repairRecords JSON.
+  // Normalize cost the same way (null/undefined/blank -> 0, else Number(r.cost))
+  // so the existing (r.cost || 0).toLocaleString() display renders correctly.
+  const costHistoryRepairs = repairRecords
+    .filter((r) => r.equipmentId === eq.id)
+    .map((r) => ({
+      ...r,
+      cost: r.cost === null || r.cost === undefined || r.cost === "" ? 0 : Number(r.cost),
+    }));
+
   return (
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -989,7 +1000,7 @@ function CostsTab({ eq }) {
       <div className="rounded-xl border border-border bg-surface p-5 shadow-card">
         <h3 className="text-sm font-semibold text-ink mb-3">Cost history</h3>
         <div className="flex flex-col">
-          {[...eq.maintenanceRecords, ...eq.repairRecords]
+          {[...eq.maintenanceRecords, ...costHistoryRepairs]
             .sort((a, b) => new Date(b.date) - new Date(a.date))
             .map((r, i) => (
               <div key={r.id} className="flex items-center justify-between py-2 text-sm" style={{ borderTop: i === 0 ? "none" : "1px solid #E5EEF7" }}>
