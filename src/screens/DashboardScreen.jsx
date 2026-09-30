@@ -18,6 +18,14 @@ const CONDITION_COLOR = { Excellent: "#1F9D6B", Good: "#5FB88B", Fair: "#D89A1F"
 const RISK_ORDER = ["Very Low", "Low", "Moderate", "High", "Critical"];
 const RISK_COLOR = { "Very Low": "#1F9D6B", Low: "#5FB88B", Moderate: "#D89A1F", High: "#E07A2F", Critical: "#D9364B" };
 
+// Supabase returns numeric columns (cost, downtime_hours) as strings, so
+// summing them with the bare `+` operator would silently string-concatenate
+// instead of adding. Same null/blank -> 0 semantics used elsewhere (e.g.
+// riskEngine.js's downtimeNumber()).
+function toNumber(value) {
+  return value === null || value === undefined || value === "" ? 0 : Number(value);
+}
+
 function lastNMonths(n) {
   const months = [];
   for (let i = n - 1; i >= 0; i--) {
@@ -29,7 +37,7 @@ function lastNMonths(n) {
 
 export default function Dashboard() {
   const { openEquipment } = useApp();
-  const { equipment, loadDemoData } = useData();
+  const { equipment, repairRecords, loadDemoData } = useData();
 
   if (equipment.length === 0) {
     return (
@@ -73,30 +81,42 @@ export default function Dashboard() {
   const months = lastNMonths(8);
   const failureTrend = months.map(({ key, label }) => ({
     month: label,
-    failures: equipment.reduce((sum, e) => sum + e.repairRecords.filter((r) => {
+    failures: equipment.reduce((sum, e) => sum + repairRecords.filter((r) => {
+      if (r.equipmentId !== e.id) return false;
       const d = new Date(r.date);
       return `${d.getFullYear()}-${d.getMonth()}` === key;
     }).length, 0),
   }));
   const downtimeByMonth = months.map(({ key, label }) => ({
     month: label,
-    hours: equipment.reduce((sum, e) => sum + e.repairRecords.filter((r) => {
+    hours: equipment.reduce((sum, e) => sum + repairRecords.filter((r) => {
+      if (r.equipmentId !== e.id) return false;
       const d = new Date(r.date);
       return `${d.getFullYear()}-${d.getMonth()}` === key;
-    }).reduce((s, r) => s + (r.downtimeHours || 0), 0), 0),
+    }).reduce((s, r) => s + toNumber(r.downtimeHours), 0), 0),
   }));
   const costByMonth = months.map(({ key, label }) => {
-    const all = equipment.flatMap((e) => [...e.maintenanceRecords, ...e.repairRecords]);
-    return {
-      month: label,
-      cost: all.filter((r) => {
-        const d = new Date(r.date);
-        return `${d.getFullYear()}-${d.getMonth()}` === key;
-      }).reduce((s, r) => s + (r.cost || 0), 0),
+    const inMonth = (r) => {
+      const d = new Date(r.date);
+      return `${d.getFullYear()}-${d.getMonth()}` === key;
     };
+    const maintCost = equipment
+      .flatMap((e) => e.maintenanceRecords)
+      .filter(inMonth)
+      .reduce((s, r) => s + (r.cost || 0), 0);
+    const repairCost = equipment.reduce(
+      (sum, e) =>
+        sum +
+        repairRecords
+          .filter((r) => r.equipmentId === e.id)
+          .filter(inMonth)
+          .reduce((s, r) => s + toNumber(r.cost), 0),
+      0,
+    );
+    return { month: label, cost: maintCost + repairCost };
   });
 
-  const alerts = computeAlerts(equipment).slice(0, 8);
+  const alerts = computeAlerts(equipment, repairRecords).slice(0, 8);
 
   return (
     <div className="p-4 sm:p-6 md:p-8 flex flex-col gap-6">

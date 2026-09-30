@@ -1,7 +1,7 @@
 import { NOW, daysBetween } from "./dates.js";
 
 /** Derives the hospital-wide critical alerts feed from the live equipment list. */
-export function computeAlerts(equipmentList) {
+export function computeAlerts(equipmentList, repairRecords) {
   const alerts = [];
 
   for (const eq of equipmentList) {
@@ -25,7 +25,10 @@ export function computeAlerts(equipmentList) {
     if (warrantyDays > 0 && warrantyDays <= 90) {
       alerts.push({ id: `${eq.id}-warranty`, severity: "info", equipment: eq, message: `${eq.name}: warranty expires in ${warrantyDays} days` });
     }
-    const recent12mo = eq.repairRecords.filter((r) => daysBetween(r.date, NOW) <= 365);
+    const eqRepairs = repairRecords
+      ? repairRecords.filter((r) => r.equipmentId === eq.id)
+      : eq.repairRecords;
+    const recent12mo = eqRepairs.filter((r) => daysBetween(r.date, NOW) <= 365);
     if (recent12mo.length >= 3) {
       alerts.push({ id: `${eq.id}-repeat`, severity: "warning", equipment: eq, message: `${eq.name}: ${recent12mo.length} repeated failures in the last 12 months` });
     }
