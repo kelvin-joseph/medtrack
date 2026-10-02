@@ -8,11 +8,11 @@ import { computeAlerts } from "../lib/alerts.js";
 export default function Topbar() {
   const { navigate } = useApp();
   const { profile, role, signOut } = useRole();
-  const { equipment } = useData();
+  const { equipment, repairRecords } = useData();
   const [showNotifs, setShowNotifs] = useState(false);
   const [showAccount, setShowAccount] = useState(false);
 
-  const alerts = computeAlerts(equipment).slice(0, 8);
+  const alerts = computeAlerts(equipment, repairRecords).slice(0, 8);
   const criticalCount = alerts.filter((a) => a.severity === "critical").length;
 
   return (
