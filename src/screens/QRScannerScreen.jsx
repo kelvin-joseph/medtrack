@@ -209,7 +209,7 @@ function CameraScanner({ onDecode, onCancel, onError }) {
 
 /* ---------------------------------------------------------------------- */
 function ScannedTag({ eq, onBack }) {
-  const { addTicket, addWorkOrder } = useData();
+  const { addTicket, addWorkOrder, repairRecords } = useData();
   const [panel, setPanel] = useState(null);
   const [reported, setReported] = useState(false);
 
@@ -381,11 +381,14 @@ function ScannedTag({ eq, onBack }) {
         )}
         {panel === "repairs" && (
           <Panel title="Repair history">
-            {eq.repairRecords.length === 0 ? "No records yet." : (
-              <ul className="flex flex-col gap-1.5">
-                {eq.repairRecords.map((r) => <li key={r.id}>• {fmtDate(r.date)} — {r.faultDescription}</li>)}
-              </ul>
-            )}
+            {(() => {
+              const eqRepairs = repairRecords.filter((r) => r.equipmentId === eq.id);
+              return eqRepairs.length === 0 ? "No records yet." : (
+                <ul className="flex flex-col gap-1.5">
+                  {eqRepairs.map((r) => <li key={r.id}>• {fmtDate(r.date)} — {r.faultDescription}</li>)}
+                </ul>
+              );
+            })()}
           </Panel>
         )}
         {panel === "manual" && (
