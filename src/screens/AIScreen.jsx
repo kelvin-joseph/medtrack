@@ -44,19 +44,20 @@ function riskTrend(eq) {
   });
 }
 
-function factorList(eq) {
+function factorList(eq, repairRecords) {
   const b = eq._ai.risk.breakdown;
   const weight = (v, max) => (v / max >= 0.66 ? "High" : v / max >= 0.33 ? "Medium" : "Low");
   const color = { High: "#D9364B", Medium: "#D89A1F", Low: "#93A9C0" };
   const ageYears = eq._ai.risk.explanation[0];
-  const recentBreakdowns = eq.repairRecords.filter((r) => new Date(r.date) > new Date(Date.now() - 365 * 86400000)).length;
+  const eqRepairs = repairRecords.filter((r) => r.equipmentId === eq.id);
+  const recentBreakdowns = eqRepairs.filter((r) => new Date(r.date) > new Date(Date.now() - 365 * 86400000)).length;
   return [
     { label: `Equipment age (${ageYears})`, value: b.age, max: 20, weight: weight(b.age, 20), desc: `Weighted against a ${eq.expectedLifespanYears}-year expected useful life for this equipment class.` },
     { label: `Usage intensity (${eq.usageFrequency})`, value: b.usage, max: 15, weight: weight(b.usage, 15), desc: `${eq.operatingHoursPerWeek} operating hours/week.` },
     { label: "Breakdown history", value: b.breakdowns, max: 20, weight: weight(b.breakdowns, 20), desc: `${recentBreakdowns} breakdown(s) in the past 12 months.` },
     { label: "Preventive maintenance compliance", value: b.overdue, max: 15, weight: weight(b.overdue, 15), desc: b.overdue > 0 ? "Overdue PM is a leading predictor of failure." : "Currently on schedule." },
     { label: "Downtime history", value: b.downtime, max: 10, weight: weight(b.downtime, 10), desc: `${eq._ai.reliability.totalDowntime}h total downtime recorded.` },
-    { label: "Repair frequency & cost trend", value: b.repairs, max: 10, weight: weight(b.repairs, 10), desc: `${eq.repairRecords.length} repair record(s) on file.` },
+    { label: "Repair frequency & cost trend", value: b.repairs, max: 10, weight: weight(b.repairs, 10), desc: `${eqRepairs.length} repair record(s) on file.` },
     { label: `Clinical criticality (${eq.clinicalCriticality})`, value: b.criticality, max: 10, weight: weight(b.criticality, 10), desc: "Higher-criticality equipment is weighted more heavily." },
   ].map((f) => ({ ...f, color: color[f.weight] }));
 }
@@ -127,7 +128,7 @@ function InsightsFeed({ insights, onOpenEquipment }) {
 
 export default function AIScreen() {
   const { openEquipment } = useApp();
-  const { equipment, loadDemoData } = useData();
+  const { equipment, repairRecords, loadDemoData } = useData();
   const [tab, setTab] = useState("command");
   const topRisk = [...equipment].sort((a, b) => b._ai.risk.score - a._ai.risk.score);
   const [featuredId, setFeaturedId] = useState(topRisk[0]?.id || null);
@@ -150,11 +151,11 @@ export default function AIScreen() {
   }
 
   const featured = equipment.find((e) => e.id === featuredId) || topRisk[0];
-  const factors = factorList(featured);
+  const factors = factorList(featured, repairRecords);
   const trend = riskTrend(featured);
   const radar = radarData(featured);
   const { risk, failureProb, window, recommendations } = featured._ai;
-  const insights = generateProactiveInsights(equipment, 8);
+  const insights = generateProactiveInsights(equipment, repairRecords, 8);
 
   const avgRisk = Math.round(equipment.reduce((s, e) => s + e._ai.risk.score, 0) / equipment.length);
   const highRiskCount = equipment.filter((e) => e._ai.risk.score >= 61).length;

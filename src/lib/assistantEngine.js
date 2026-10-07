@@ -353,13 +353,14 @@ export function generateAssistantReply({
  * repeated breakdowns) and phrased in natural language for the AI
  * Center's Command Center feed.
  */
-export function generateProactiveInsights(equipment, limit = 6) {
+export function generateProactiveInsights(equipment, repairRecords, limit = 6) {
   const insights = [];
 
   for (const eq of equipment) {
     const { risk, failureProb } = eq._ai;
     const overdueDays = daysBetween(eq.nextMaintenanceDate, NOW);
-    const recent12mo = eq.repairRecords.filter(
+    const eqRepairs = repairRecords.filter((r) => r.equipmentId === eq.id);
+    const recent12mo = eqRepairs.filter(
       (r) => daysBetween(r.date, NOW) <= 365,
     );
 
