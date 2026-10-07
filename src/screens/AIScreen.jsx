@@ -412,7 +412,7 @@ export default function AIScreen() {
         )}
 
         {tab === "assistant" && (
-          <AICommandChat equipment={equipment} contextEquipment={featured} />
+          <AICommandChat equipment={equipment} contextEquipment={featured} repairRecords={repairRecords} />
         )}
 
         {tab === "scanner" && <ErrorCodeScanner />}

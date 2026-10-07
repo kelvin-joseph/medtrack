@@ -134,7 +134,7 @@ function topRiskSummary(equipment) {
   return `Here's the current highest-risk equipment:\n\n${lines.join("\n")}\n\nAsk me about any of these by name for details.`;
 }
 
-function replyFor(intent, eq) {
+function replyFor(intent, eq, repairRecords) {
   if (!eq) return null;
   const {
     risk,
@@ -200,9 +200,10 @@ function replyFor(intent, eq) {
     }
 
     case "fault-history": {
-      if (eq.repairRecords.length === 0)
+      const eqRepairs = (repairRecords || []).filter((r) => r.equipmentId === eq.id);
+      if (eqRepairs.length === 0)
         return `${eq.name} has no recorded breakdowns or repairs on file.`;
-      const recent = eq.repairRecords
+      const recent = eqRepairs
         .slice(0, 3)
         .map(
           (r) =>
@@ -281,6 +282,7 @@ export function generateAssistantReply({
   message,
   equipment,
   contextEquipment,
+  repairRecords,
 }) {
   const trimmed = (message || "").trim();
   if (!trimmed) {
@@ -337,7 +339,7 @@ export function generateAssistantReply({
     };
   }
 
-  const text = replyFor(intent, target);
+  const text = replyFor(intent, target, repairRecords);
   return {
     text:
       text ||

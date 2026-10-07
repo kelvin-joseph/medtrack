@@ -37,7 +37,7 @@ const HISTORY_KEY = "aiAssistantHistory";
 // actually needs — not the full equipment record (documents, full repair
 // history objects, etc.), to keep the request small and avoid handing an
 // external API more hospital data than the question calls for.
-function summarizeEquipment(eq) {
+function summarizeEquipment(eq, repairRecords) {
   if (!eq) return null;
   return {
     id: eq.id,
@@ -62,7 +62,7 @@ function summarizeEquipment(eq) {
     warrantyExpiry: eq.warrantyExpiry,
     vendor: eq.vendor,
     assignedEngineer: eq.assignedEngineer,
-    recentRepairs: (eq.repairRecords || []).slice(0, 3).map((r) => ({
+    recentRepairs: (repairRecords || []).filter((r) => r.equipmentId === eq.id).slice(0, 3).map((r) => ({
       date: r.date,
       faultDescription: r.faultDescription,
       finalStatus: r.finalStatus,
@@ -102,11 +102,11 @@ export function clearHistory() {
   writeValue(HISTORY_KEY, []);
 }
 
-async function askLLM({ message, equipment, contextEquipment }) {
+async function askLLM({ message, equipment, contextEquipment, repairRecords }) {
   const { data, error } = await supabase.functions.invoke("ai-assistant", {
     body: {
       message,
-      context: summarizeEquipment(contextEquipment),
+      context: summarizeEquipment(contextEquipment, repairRecords),
       fleetSummary: summarizeFleet(equipment),
     },
   });
@@ -118,7 +118,7 @@ async function askLLM({ message, equipment, contextEquipment }) {
 /**
  * Ask the assistant a question. Resolves to { text, matchedEquipmentId }.
  */
-export async function ask({ message, equipment, contextEquipment }) {
+export async function ask({ message, equipment, contextEquipment, repairRecords }) {
   const trimmed = (message || "").trim();
   if (!trimmed) {
     return {
@@ -140,6 +140,7 @@ export async function ask({ message, equipment, contextEquipment }) {
       message: trimmed,
       equipment,
       contextEquipment: mentioned || contextEquipment,
+      repairRecords,
     });
     return { text, matchedEquipmentId };
   } catch (err) {
@@ -151,6 +152,7 @@ export async function ask({ message, equipment, contextEquipment }) {
       message: trimmed,
       equipment,
       contextEquipment,
+      repairRecords,
     });
   }
 }

@@ -8,7 +8,7 @@ import * as aiAssistantService from "../services/aiAssistantService.js";
  * feel like an open-ended colleague you can just talk to, not a menu of
  * canned prompts.
  */
-export default function AICommandChat({ equipment, contextEquipment }) {
+export default function AICommandChat({ equipment, contextEquipment, repairRecords }) {
   const [messages, setMessages] = useState(() => aiAssistantService.getHistory());
   const [input, setInput] = useState("");
   const [isThinking, setIsThinking] = useState(false);
@@ -32,7 +32,7 @@ export default function AICommandChat({ equipment, contextEquipment }) {
     setIsThinking(true);
 
     try {
-      const { text: replyText } = await aiAssistantService.ask({ message: trimmed, equipment, contextEquipment });
+      const { text: replyText } = await aiAssistantService.ask({ message: trimmed, equipment, contextEquipment, repairRecords });
       const assistantMsg = { role: "assistant", text: replyText, timestamp: new Date().toISOString() };
       const withReply = [...next, assistantMsg];
       setMessages(withReply);
